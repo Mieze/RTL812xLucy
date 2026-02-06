@@ -2,7 +2,77 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.insanelymac.${PRODUCT_NAME:rfc1034identifier}</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>KEXT</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>IOKitPersonalities</key>
+	<dict>
+		<key>RTL8125</key>
+		<dict>
+			<key>CFBundleIdentifier</key>
+			<string>com.insanelymac.${PRODUCT_NAME:rfc1034identifier}</string>
+			<key>Driver Parameters</key>
+			<dict>
+				<key>enableASPM</key>
+				<true/>
+				<key>enableTSO4</key>
+				<false/>
+				<key>enableTSO6</key>
+				<false/>
+				<key>µsPollTime10G</key>
+				<integer>100</integer>
+				<key>µsPollTime2G</key>
+				<integer>160</integer>
+				<key>µsPollTime5G</key>
+				<integer>120</integer>
+			</dict>
+			<key>DriverVersion</key>
+			<string>$MODULE_VERSION</string>
+			<key>IOClass</key>
+			<string>RTL8125</string>
+			<key>IOPCIPrimaryMatch</key>
+			<string>0x812510ec 0x81251186 0x300010ec</string>
+			<key>IOPCITunnelCompatible</key>
+			<false/>
+			<key>IOProbeScore</key>
+			<integer>5000</integer>
+			<key>IOProviderClass</key>
+			<string>IOPCIDevice</string>
+		</dict>
+	</dict>
 	<key>OSBundleLibraries</key>
-	<dict/>
+	<dict>
+		<key>com.apple.iokit.IONetworkingFamily</key>
+		<string>1.8.0</string>
+		<key>com.apple.iokit.IOPCIFamily</key>
+		<string>2.6</string>
+		<key>com.apple.kpi.bsd</key>
+		<string>8.10.0</string>
+		<key>com.apple.kpi.iokit</key>
+		<string>8.10.0</string>
+		<key>com.apple.kpi.libkern</key>
+		<string>8.10.0</string>
+		<key>com.apple.kpi.mach</key>
+		<string>8.10.0</string>
+	</dict>
+	<key>OSBundleRequired</key>
+	<string>Network-Root</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2025 Laura Müller. All rights reserved.</string>
 </dict>
 </plist>
