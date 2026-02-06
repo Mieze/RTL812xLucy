@@ -41,6 +41,7 @@ Although RTL812x supports AppleVTD, there is no guarantee that your mainboard al
 
 **Installation**
 - Use OpenCore to inject the driver.
+<img width="683" height="145" alt="Bildschirmfoto 2026-02-06 um 20 33 23" src="https://github.com/user-attachments/assets/3a75f549-1ba2-4059-8bb4-d89b8b8b06ed" />
 
 **Contributions**
 
