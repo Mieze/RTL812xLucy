@@ -179,9 +179,9 @@ void RTL8125::getParams()
         enableTSO4 = false;
         enableTSO6 = false;
         enableASPM = false;
-        pollTime10G = 60000;
-        pollTime5G = 90000;
-        pollTime2G = 110000;
+        pollTime10G = 100000;
+        pollTime5G = 120000;
+        pollTime2G = 160000;
     }
     if (versionString)
         IOLog("Version %s\n", versionString->getCStringNoCopy());
@@ -198,7 +198,7 @@ bool RTL8125::setupMediumDict()
     if (HW_SUPP_PHY_LINK_SPEED_5000M(tp))
         limit = MIDX_10000FD;
     else if (HW_SUPP_PHY_LINK_SPEED_2500M(tp))
-        limit = MIDX_5000FD;
+        limit = (tp->mcfg < CFG_METHOD_4) ? MIDX_2500FD_EEE : MIDX_5000FD;
     else
         limit = MIDX_2500FD;
     
@@ -488,9 +488,12 @@ bool RTL8125::setupTxResources()
     txDescArray[kTxLastDesc].opts1 = OSSwapHostToLittleInt32(RingEnd);
     
     txNextDescIndex = txDirtyDescIndex = 0;
-    txTailPtr0 = txClosePtr0 = 0;
     txNumFreeDesc = kNumTxDesc;
     
+#ifdef ENABLE_TX_NO_CLOSE
+    txTailPtr0 = txClosePtr0 = 0;
+#endif  /* ENABLE_TX_NO_CLOSE */
+
     if (useAppleVTD) {
         result = setupTxMap();
         
@@ -707,13 +710,16 @@ void RTL8125::clearRxTxRings()
         m = txBufArray[i].mbuf;
         
         if (m) {
-            freePacket(m);
+            mbuf_freem_list(m);
             txBufArray[i].mbuf = NULL;
             txBufArray[i].numDescs = 0;
             txBufArray[i].packetBytes = 0;
         }
     }
+#ifdef ENABLE_TX_NO_CLOSE
     txTailPtr0 = txClosePtr0 = 0;
+#endif  /* ENABLE_TX_NO_CLOSE */
+
     txDirtyDescIndex = txNextDescIndex = 0;
     txNumFreeDesc = kNumTxDesc;
         

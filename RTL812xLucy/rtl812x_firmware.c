@@ -245,30 +245,3 @@ void rtl8125_fw_write_firmware(struct rtl8125_private *tp, struct rtl8125_fw *rt
         }
     }
 }
-/*
-void rtl8125_fw_release_firmware(struct rtl8125_fw *rtl_fw)
-{
-        release_firmware(rtl_fw->fw);
-}
-
-int rtl8125_fw_request_firmware(struct rtl8125_fw *rtl_fw)
-{
-        int rc;
-
-        rc = request_firmware(&rtl_fw->fw, rtl_fw->fw_name, rtl_fw->dev);
-        if (rc < 0)
-                goto out;
-
-        if (!rtl8125_fw_format_ok(rtl_fw) || !rtl8125_fw_data_ok(rtl_fw)) {
-                release_firmware(rtl_fw->fw);
-                rc = -EINVAL;
-                goto out;
-        }
-
-        return 0;
-out:
-        dev_err(rtl_fw->dev, "Unable to load firmware %s (%d)\n",
-                rtl_fw->fw_name, rc);
-        return rc;
-}
-*/

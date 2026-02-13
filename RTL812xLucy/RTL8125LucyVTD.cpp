@@ -182,7 +182,12 @@ void RTL8125::interruptOccurredVTD(OSObject *client, IOInterruptEventSource *src
             
             if (rxPackets)
                 netif->flushInputQueue();
-            
+        
+#ifdef DEBUG_INTR
+            if (rxPackets > maxRxPkt)
+                maxRxPkt = rxPackets;
+#endif  /* DEBUG_INTR */
+
             etherStats->dot3RxExtraEntry.interrupts++;
         }
         /* Tx interrupt */
@@ -192,7 +197,7 @@ void RTL8125::interruptOccurredVTD(OSObject *client, IOInterruptEventSource *src
             etherStats->dot3TxExtraEntry.interrupts++;
         }
         if (status & (TxOK | RxOK | PCSTimeout))
-            timerValue = updateTimerValue(status);
+            timerValue = updateTimerValue(tp, status);
         
         RTL_W32(tp, TIMER_INT0_8125, timerValue);
 

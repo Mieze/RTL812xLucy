@@ -21,9 +21,15 @@
 #include "RTL8125LucyRxPool.hpp"
 #include "rtl812x.h"
 
+#ifdef ENABLE_USE_FIRMWARE_FILE
+#include "rtl812x_firmware.h"
+#endif  /* ENABLE_USE_FIRMWARE_FILE */
+
 struct RtlChipFwInfo {
     const char *name;
     const char *fw_name;
+    const unsigned char *fw_data;
+    const unsigned int fw_size;
 };
 
 struct RtlChipInfo {
@@ -192,7 +198,7 @@ typedef struct RtlStatData {
 #define kMaxSegs 32
 
 /* The number of descriptors must be a power of 2. */
-#define kNumTxDesc    1024   /* Number of Tx descriptors */
+#define kNumTxDesc    512   /* Number of Tx descriptors */
 #define kNumRxDesc    512    /* Number of Rx descriptors */
 #define kTxLastDesc    (kNumTxDesc - 1)
 #define kRxLastDesc    (kNumRxDesc - 1)
@@ -244,11 +250,17 @@ typedef struct RtlStatData {
 #define kTxCheckTreshhold (kTxDeadlockTreshhold - 1)
 
 /* timer value for interrupt throttling */
-#define kTimerDefault  0x2600
-#define kTimespan4ms   4000000UL
+#define kTimerDefault   0x2600
+#define kTimerBulk      0x5f00
+#define kTimerLat1   (kTimerDefault / 2)
+#define kTimerLat2   ((kTimerDefault / 4) * 3)
+#define kTimespan4ms    4000000UL
 
 #define kIPv6HdrLen     sizeof(struct ip6_hdr)
 #define kIPv4HdrLen     sizeof(struct ip)
+#define kL234HdrLenV6   (sizeof(struct ether_header) + kIPv6HdrLen + sizeof(struct tcphdr))
+#define kL234HdrLenV4   (sizeof(struct ether_header) + kIPv4HdrLen + sizeof(struct tcphdr))
+
 enum
 {
     kPowerStateOff = 0,
@@ -453,7 +465,7 @@ private:
     void setLinkDown();
     bool txHangCheck();
     void getChecksumResult(mbuf_t m, UInt32 status1, UInt32 status2);
-    UInt32 updateTimerValue(UInt32 status);
+    UInt32 updateTimerValue(struct rtl8125_private *tp, UInt32 status);
     
     /* AppleVTD support methods*/
     bool setupRxMap();
@@ -473,8 +485,7 @@ private:
     
 #ifdef ENABLE_USE_FIRMWARE_FILE
     /* Firmware methods */
-    IOReturn requestFirmware();
-    static void fwRequestCallback(OSKextRequestTag requestTag, OSReturn result, const void* resourceData, uint32_t resourceDataLength, void *context);
+    void requestFirmware(struct rtl8125_private *tp);
 #endif  /* ENABLE_USE_FIRMWARE_FILE */
     
     /* Hardware initialization methods. */
@@ -483,6 +494,7 @@ private:
     void rtl812xInitMacAddr(struct rtl8125_private *tp);
     void rtl812xEnable();
     void rtl812xDisable();
+    void rtl812xSetOffloadFeatures(bool active);
     void rtl812xSetMrrs(struct rtl8125_private *tp, UInt8 setting);
     void rtl812xHwConfig(struct rtl8125_private *tp);
     void rtl812xHwInit(struct rtl8125_private *tp);
@@ -491,14 +503,17 @@ private:
     void rtl812xUp(struct rtl8125_private *tp);
     void rtl812xDown(struct rtl8125_private *tp);
     void rtl812xDumpTallyCounter(struct rtl8125_private *tp);
-    UInt32 rtl812xGetHwCloPtr(struct rtl8125_private *tp);
-    void rtl812xDoorbell(struct rtl8125_private *tp, UInt32 txTailPtr);
     void rtl812xLinkOnPatch(struct rtl8125_private *tp);
     void rtl812xLinkDownPatch(struct rtl8125_private *tp);
     void rtl812xCheckLinkStatus(struct rtl8125_private *tp);
     void rtl812xGetEEEMode(struct rtl8125_private *tp);
     void rtl812xRestart(struct rtl8125_private *tp);
     void rtl812xMedium2Adv(struct rtl8125_private *tp, UInt32 index);
+
+#ifdef ENABLE_TX_NO_CLOSE
+    UInt32 rtl812xGetHwCloPtr(struct rtl8125_private *tp);
+    void rtl812xDoorbell(struct rtl8125_private *tp, UInt32 txTailPtr);
+#endif  /* ENABLE_TX_NO_CLOSE */
     
 private:
     IOWorkLoop *workLoop;
@@ -513,13 +528,7 @@ private:
     IOEthernetInterface *netif;
     IOMemoryMap *baseMap;
     IOMapper *mapper;
-    
-#ifdef ENABLE_USE_FIRMWARE_FILE
-    IOLock *fwLock;
-    void *fwMem;
-    UInt64 fwMemSize;
-#endif  /* ENABLE_USE_FIRMWARE_FILE */
-    
+
     /* transmitter data */
     IOBufferMemoryDescriptor *txBufDesc;
     IOPhysicalAddress64 txPhyAddr;
@@ -535,8 +544,12 @@ private:
     UInt64 txDescDoneLast;
     UInt32 txNextDescIndex;
     UInt32 txDirtyDescIndex;
+    
+#ifdef ENABLE_TX_NO_CLOSE
     UInt32 txTailPtr0;
     UInt32 txClosePtr0;
+#endif  /* ENABLE_TX_NO_CLOSE */
+
     SInt32 txNumFreeDesc;
     SInt32 totalBytes;
     SInt32 totalDescs;
@@ -581,6 +594,10 @@ private:
     struct IOEthernetAddress fallBackMacAddr;
     IONetworkPacketPollingParameters pollParms;
 
+#ifdef ENABLE_USE_FIRMWARE_FILE
+    struct rtl812x_firmware firmware;
+#endif  /* ENABLE_USE_FIRMWARE_FILE */
+
     /* poll intervals in ns */
     UInt64 pollTime10G;
     UInt64 pollTime5G;
@@ -611,6 +628,7 @@ private:
     UInt32 lastRxIntrupts;
     UInt32 lastTxIntrupts;
     UInt32 lastTmrIntrupts;
+    UInt32 maxRxPkt;
     UInt32 maxTxPkt;
 #endif
 };

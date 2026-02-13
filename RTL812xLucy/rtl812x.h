@@ -16,6 +16,7 @@
 #include "linux/uapi/linux/mdio.h"
 
 #define FIRMWARE_8125A_3    "rtl8125a-3.fw"
+#define FIRMWARE_8125B_1    "rtl8125b-1.fw"
 #define FIRMWARE_8125B_2    "rtl8125b-2.fw"
 #define FIRMWARE_8125BP_1   "rtl8125bp-1.fw"
 #define FIRMWARE_8125BP_2   "rtl8125bp-2.fw"

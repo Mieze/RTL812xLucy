@@ -191,10 +191,6 @@ bool RTL8125::init(OSDictionary *properties)
         rxPacketHead = NULL;
         rxPacketTail = NULL;
         rxPacketSize = 0;
-
-#ifdef ENABLE_USE_FIRMWARE_FILE
-        fwMem = NULL;
-#endif  /* ENABLE_USE_FIRMWARE_FILE */
         
         /* Initialize state flags. */
         stateFlags = 0;
@@ -207,6 +203,16 @@ bool RTL8125::init(OSDictionary *properties)
         pciDeviceData.subsystem_device = 0;
         memset(&linuxData, 0, sizeof(struct rtl8125_private));
         linuxData.pci_dev = &pciDeviceData;
+        
+#ifdef ENABLE_USE_FIRMWARE_FILE
+        linuxData.fw_name = NULL;
+        linuxData.rtl_fw = NULL;
+        
+        firmware.fw.size = 0;
+        firmware.fw.data = NULL;
+        firmware.fw.priv = NULL;
+#endif  /* ENABLE_USE_FIRMWARE_FILE */
+
         rtlChipInfos = &rtlChipInfo[0];
         timerValue = 0;
         enableTSO4 = false;
@@ -222,6 +228,7 @@ bool RTL8125::init(OSDictionary *properties)
 
 #ifdef DEBUG_INTR
         lastRxIntrupts = lastTxIntrupts = lastTmrIntrupts = tmrInterrupts = 0;
+        maxRxPkt = 0;
         maxTxPkt = 0;
 #endif
     }
@@ -262,17 +269,6 @@ void RTL8125::free()
     freeTxResources();
     freeRxResources();
     freeStatResources();
-
-#ifdef ENABLE_USE_FIRMWARE_FILE
-    if (fwLock) {
-        IOLockFree(fwLock);
-        fwLock = NULL;
-    }
-    if (fwMem) {
-        IOFree(fwMem, fwMemSize);
-        fwMem = NULL;
-    }
-#endif  /* ENABLE_USE_FIRMWARE_FILE */
     
     DebugLog("free() <===\n");
     
@@ -307,16 +303,7 @@ bool RTL8125::start(IOService *provider)
     mapper = IOMapper::copyMapperForDevice(pciDevice);
 
     getParams();
-    
-#ifdef ENABLE_USE_FIRMWARE_FILE
-    fwLock = IOLockAlloc();
-
-    if (!fwLock) {
-        IOLog("Failed to alloc fwLock.\n");
-        goto error_lock;
-    }
-#endif  /* ENABLE_USE_FIRMWARE_FILE */
-    
+        
     if (!initPCIConfigSpace(pciDevice)) {
         goto error_cfg;
     }
@@ -386,15 +373,6 @@ error_gate:
     RELEASE(mediumDict);
 
 error_cfg:
-    
-#ifdef ENABLE_USE_FIRMWARE_FILE
-    if (fwLock) {
-        IOLockFree(fwLock);
-        fwLock = NULL;
-    }
-#endif  /* ENABLE_USE_FIRMWARE_FILE */
-    
-error_lock:
     pciDevice->close(this);
 
 error_open:
@@ -436,17 +414,6 @@ void RTL8125::stop(IOService *provider)
 
     RELEASE(baseMap);
     linuxData.mmio_addr = NULL;
-
-#ifdef ENABLE_USE_FIRMWARE_FILE
-    if (fwLock) {
-        IOLockFree(fwLock);
-        fwLock = NULL;
-    }
-    if (fwMem) {
-        IOFree(fwMem, fwMemSize);
-        fwMem = NULL;
-    }
-#endif  /* ENABLE_USE_FIRMWARE_FILE */
 
     RELEASE(pciDevice);
     
@@ -642,7 +609,7 @@ IOReturn RTL8125::outputStart(IONetworkInterface *interface, IOOptionBits option
                 if ((len - ETH_HLEN) > mtu) {
                     /*
                      * Fix the pseudo header checksum, get the
-                     * TCP header size and set paylen.
+                     * TCP header offset and set paylen.
                      */
                     prepareTSO4(m, &tcpOff, &mss);
                     
@@ -706,7 +673,11 @@ IOReturn RTL8125::outputStart(IONetworkInterface *interface, IOOptionBits option
         OSAddAtomic(-numSegs, &txNumFreeDesc);
         index = txNextDescIndex;
         txNextDescIndex = (txNextDescIndex + numSegs) & kTxDescMask;
+        
+#ifdef ENABLE_TX_NO_CLOSE
         txTailPtr0 += numSegs;
+#endif  /* ENABLE_TX_NO_CLOSE */
+
         lastSeg = numSegs - 1;
         
         /* Next fill in the VLAN tag. */
@@ -737,6 +708,11 @@ IOReturn RTL8125::outputStart(IONetworkInterface *interface, IOOptionBits option
             
             desc->addr = OSSwapHostToLittleInt64(txSegments[i].location);
             desc->opts2 = OSSwapHostToLittleInt32(opts2);
+            
+#ifndef ENABLE_TX_NO_CLOSE
+            wmb();
+#endif  /* ENABLE_TX_NO_CLOSE */
+
             desc->opts1 = OSSwapHostToLittleInt32(opts1);
             
             //DebugLog("opts1=0x%x, opts2=0x%x, addr=0x%llx, len=0x%llx\n", opts1, opts2, txSegments[i].location, txSegments[i].length);
@@ -744,9 +720,14 @@ IOReturn RTL8125::outputStart(IONetworkInterface *interface, IOOptionBits option
         }
     }
     wmb();
+    
+#ifdef ENABLE_TX_NO_CLOSE
     /* Update tail pointer. */
     rtl812xDoorbell(&linuxData, txTailPtr0);
-    
+#else
+    RTL_W16(&linuxData, TPPOLL_8125, BIT_0);
+#endif  /* ENABLE_TX_NO_CLOSE */
+
     result = (txNumFreeDesc > kMinFreeDescs) ? kIOReturnSuccess : kIOReturnNoResources;
     
 done:
@@ -1099,6 +1080,7 @@ IOReturn RTL8125::getMaxPacketSize(UInt32 * maxSize) const
     DebugLog("getMaxPacketSize() ===>\n");
         
     *maxSize = kMaxPacketSize;
+    DebugLog("Maximum packet size: %u\n", *maxSize);
 
     DebugLog("getMaxPacketSize() <===\n");
     
@@ -1108,38 +1090,19 @@ IOReturn RTL8125::getMaxPacketSize(UInt32 * maxSize) const
 IOReturn RTL8125::setMaxPacketSize(UInt32 maxSize)
 {
     struct rtl8125_private *tp = &linuxData;
-    ifnet_t ifnet = netif->getIfnet();
-    ifnet_offload_t offload;
-    UInt32 mask = 0;
     IOReturn result = kIOReturnError;
 
     DebugLog("setMaxPacketSize() ===>\n");
     
     if (maxSize <= kMaxPacketSize) {
-        mtu = maxSize - (VLAN_ETH_HLEN + ETH_FCS_LEN);
+        mtu = maxSize - (VLAN_ETH_HLEN);
         DebugLog("maxSize: %u, mtu: %u\n", maxSize, mtu);
         
         /* Adjust maximum rx size. */
         tp->rms = mtu + VLAN_ETH_HLEN + ETH_FCS_LEN;
         
-        if (enableTSO4)
-            mask |= IFNET_TSO_IPV4;
-        
-        if (enableTSO6)
-            mask |= IFNET_TSO_IPV6;
+        rtl812xSetOffloadFeatures(mtu <= MSS_MAX);
 
-        offload = ifnet_offload(ifnet);
-        
-        if (mtu > MSS_MAX) {
-            offload &= ~mask;
-            DebugLog("Disable hardware offload features: %x!\n", mask);
-        } else {
-            offload |= mask;
-            DebugLog("Enable hardware offload features: %x!\n", mask);
-        }
-        
-        if (ifnet_set_offload(ifnet, offload))
-            IOLog("Error setting hardware offload: %x!\n", offload);
         /* Force reinitialization. */
         setLinkDown();
         timerSource->cancelTimeout();
@@ -1173,6 +1136,8 @@ void RTL8125::pciErrorInterrupt()
     rtl812xRestart(&linuxData);
 }
 
+#ifdef ENABLE_TX_NO_CLOSE
+
 void RTL8125::txInterrupt()
 {
     struct rtl8125_private *tp = &linuxData;
@@ -1187,7 +1152,8 @@ void RTL8125::txInterrupt()
     
     //DebugLog("txInterrupt() txClosePtr0: %u, nextClosePtr: %u, numDone: %u.\n", txClosePtr0, nextClosePtr, numDone);
     
-    txClosePtr0 = nextClosePtr;
+    n = min(txNextDescIndex - txDirtyDescIndex, n);
+    txClosePtr0 += n;
 
     while (n-- > 0) {
         m = txBufArray[txDirtyDescIndex].mbuf;
@@ -1217,6 +1183,52 @@ void RTL8125::txInterrupt()
         OSAddAtomic(bytes, &totalBytes);
     }
 }
+#else
+void RTL8125::txInterrupt()
+{
+    mbuf_t m;
+    SInt32 numDirty = kNumTxDesc - txNumFreeDesc;
+    UInt32 oldDirtyIndex = txDirtyDescIndex;
+    UInt32 bytes = 0;
+    UInt32 descs = 0;
+    UInt32 descStatus;
+    
+    while (numDirty-- > 0) {
+        descStatus = OSSwapLittleToHostInt32(txDescArray[txDirtyDescIndex].opts1);
+        
+        if (descStatus & DescOwn)
+            break;
+        
+        m = txBufArray[txDirtyDescIndex].mbuf;
+        txBufArray[txDirtyDescIndex].mbuf = NULL;
+        
+        if (m) {
+            if (useAppleVTD)
+                txUnmapPacket();
+
+            descs += txBufArray[txDirtyDescIndex].numDescs;
+            bytes += txBufArray[txDirtyDescIndex].packetBytes;
+            txBufArray[txDirtyDescIndex].numDescs = 0;
+            txBufArray[txDirtyDescIndex].packetBytes = 0;
+
+            freePacket(m, kDelayFree);
+        }
+        txDescDoneCount++;
+        OSIncrementAtomic(&txNumFreeDesc);
+        ++txDirtyDescIndex &= kTxDescMask;
+    }
+    if (oldDirtyIndex != txDirtyDescIndex) {
+        if (txNumFreeDesc > kTxQueueWakeTreshhold)
+            netif->signalOutputThread();
+        
+        releaseFreePackets();
+        OSAddAtomic(descs, &totalDescs);
+        OSAddAtomic(bytes, &totalBytes);
+        
+        RTL_W16(&linuxData, TPPOLL_8125, BIT_0);
+    }
+}
+#endif  /* ENABLE_TX_NO_CLOSE */
 
 UInt32 RTL8125::rxInterrupt(IONetworkInterface *interface, uint32_t maxCount, IOMbufQueue *pollQueue, void *context)
 {
@@ -1382,6 +1394,11 @@ void RTL8125::interruptOccurred(OSObject *client, IOInterruptEventSource *src, i
             if (rxPackets)
                 netif->flushInputQueue();
             
+#ifdef DEBUG_INTR
+            if (rxPackets > maxRxPkt)
+                maxRxPkt = rxPackets;
+#endif  /* DEBUG_INTR */
+
             etherStats->dot3RxExtraEntry.interrupts++;
         }
         /* Tx interrupt */
@@ -1391,7 +1408,7 @@ void RTL8125::interruptOccurred(OSObject *client, IOInterruptEventSource *src, i
             etherStats->dot3TxExtraEntry.interrupts++;
         }
         if (status & (TxOK | RxOK | PCSTimeout))
-            timerValue = updateTimerValue(status);
+            timerValue = updateTimerValue(tp, status);
         
         RTL_W32(tp, TIMER_INT0_8125, timerValue);
 
@@ -1511,13 +1528,15 @@ void RTL8125::timerAction(IOTimerEventSource *timer)
 #ifdef DEBUG_INTR
     UInt32 tmrIntr = tmrInterrupts - lastTmrIntrupts;
     UInt32 txIntr = etherStats->dot3TxExtraEntry.interrupts - lastTxIntrupts;
+    UInt32 rxIntr = etherStats->dot3RxExtraEntry.interrupts - lastRxIntrupts;
 
     lastTmrIntrupts = tmrInterrupts;
+    lastRxIntrupts = etherStats->dot3RxExtraEntry.interrupts;
     lastTxIntrupts = etherStats->dot3TxExtraEntry.interrupts;
 
-    //IOLog("rxIntr/s: %u, txIntr/s: %u, timerIntr/s: %u\n", rxIntr, txIntr, tmrIntr);
-    IOLog("timerIntr/s: %u, txIntr/s: %u, maxTxPkt: %u\n", tmrIntr, txIntr, maxTxPkt);
+    IOLog("timer: %u, tx: %u, rx: %u, txPkt: %u, rxPkt: %u\n", tmrIntr, txIntr, rxIntr, maxTxPkt, maxRxPkt);
     
+    maxRxPkt = 0;
     maxTxPkt = 0;
 #endif
     
@@ -1541,14 +1560,26 @@ done:
 
 static inline void prepareTSO4(mbuf_t m, UInt32 *tcpOffset, UInt32 *mss)
 {
-    struct ip *iphdr = (struct ip *)((UInt8 *)mbuf_data(m) + ETH_HLEN);
-    UInt16 *addr = (UInt16 *)&iphdr->ip_src;
+    struct ip *iphdr;
     struct tcphdr *tcphdr;
+    UInt16 *addr;
+    int i = (int)mbuf_len(m);
     UInt32 csum32 = 6;
-    UInt32 i, il;
+    UInt32 il;
+
+    /*
+     * VLAN packets have the L3 and L4 headers in the second mbuf.
+     * The first one carries only the L2 header.
+     */
+    if (i == ETH_HLEN)
+        iphdr = (struct ip *)mbuf_data(mbuf_next(m));
+    else
+        iphdr = (struct ip *)((UInt8 *)mbuf_data(m) + ETH_HLEN);
+
+    addr = (UInt16 *)&iphdr->ip_src;
     
     for (i = 0; i < 4; i++) {
-        csum32 += ntohs(addr[i]);
+        csum32 += ntohs(*addr++);
         csum32 += (csum32 >> 16);
         csum32 &= 0xffff;
     }
@@ -1567,10 +1598,19 @@ static inline void prepareTSO4(mbuf_t m, UInt32 *tcpOffset, UInt32 *mss)
 
 static inline void prepareTSO6(mbuf_t m, UInt32 *tcpOffset, UInt32 *mss)
 {
-    struct ip6_hdr *ip6Hdr = (struct ip6_hdr *)((UInt8 *)mbuf_data(m) + ETH_HLEN);
-    struct tcphdr *tcpHdr = (struct tcphdr *)((UInt8 *)ip6Hdr + kIPv6HdrLen);
+    struct ip6_hdr *ip6Hdr;
+    struct tcphdr *tcpHdr;
+    int i = (int)mbuf_len(m);
     UInt32 csum32 = 6;
-    UInt32 i;
+    
+    /*
+     * VLAN packets have the L3 and L4 headers in the second mbuf.
+     * The first one carries only the L2 header.
+     */
+    if (i == ETH_HLEN)
+        ip6Hdr = (struct ip6_hdr *)mbuf_data(mbuf_next(m));
+    else
+        ip6Hdr = (struct ip6_hdr *)((UInt8 *)mbuf_data(m) + ETH_HLEN);
 
     ip6Hdr->ip6_ctlun.ip6_un1.ip6_un1_plen = 0;
 
@@ -1579,9 +1619,8 @@ static inline void prepareTSO6(mbuf_t m, UInt32 *tcpOffset, UInt32 *mss)
         csum32 += (csum32 >> 16);
         csum32 &= 0xffff;
     }
-    /* Get the length of the TCP header. */
-    //max = ETH_DATA_LEN - (kIPv6HdrLen + tl);
-
+    tcpHdr = (struct tcphdr *)((UInt8 *)ip6Hdr + kIPv6HdrLen);
+    
     /* Fill in the pseudo header checksum for TSOv6. */
     tcpHdr->th_sum = htons((UInt16)csum32);
 

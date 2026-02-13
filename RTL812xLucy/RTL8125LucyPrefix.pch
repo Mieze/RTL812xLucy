@@ -73,6 +73,7 @@ extern "C" {
 #define DebugLog(args...)
 #endif
 
+#define ENABLE_TX_NO_CLOSE
 //#define ENABLE_USE_FIRMWARE_FILE
 //#define USE_NEW_TX_DESC
 //#define DEBUG_INTR

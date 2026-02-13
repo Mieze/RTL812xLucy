@@ -28,26 +28,35 @@
 
 #ifdef ENABLE_USE_FIRMWARE_FILE
 
+#include "rtl8125a-3.h"
+#include "rtl8125b-1.h"
+#include "rtl8125b-2.h"
+#include "rtl8125bp-2.h"
+#include "rtl8125d-1.h"
+#include "rtl8125d-2.h"
+#include "rtl8126a-2.h"
+#include "rtl8126a-3.h"
+
 const struct RtlChipFwInfo rtlChipFwInfos[] {
     /* PCI-E devices. */
-    [0]             = {"", ""},
-    [1]             = {"", ""},
-    [CFG_METHOD_2]  = {"RTL8125A"        ""},
-    [CFG_METHOD_3]  = {"RTL8125A",       FIRMWARE_8125A_3},
-    [CFG_METHOD_4]  = {"RTL8125B",       ""},
-    [CFG_METHOD_5]  = {"RTL8125B",       FIRMWARE_8125B_2},
-    [CFG_METHOD_6]  = {"RTL8168KB",      FIRMWARE_8125A_3},
-    [CFG_METHOD_7]  = {"RTL8168KB",      FIRMWARE_8125B_2},
-    [CFG_METHOD_8]  = {"RTL8125BP",      FIRMWARE_8125BP_1},
-    [CFG_METHOD_9]  = {"RTL8125BP",      FIRMWARE_8125BP_2},
-    [CFG_METHOD_10] = {"RTL8125D",       FIRMWARE_8125D_1},
-    [CFG_METHOD_11] = {"RTL8125D",       FIRMWARE_8125D_2},
-    [CFG_METHOD_12] = {"RTL8125CP",      FIRMWARE_8125CP_1},
-    [CFG_METHOD_13] = {"RTL8168KD",      FIRMWARE_8125D_2},
-    [CFG_METHOD_31] = {"RTL8126A",       FIRMWARE_8126A_2},
-    [CFG_METHOD_32] = {"RTL8126A",       FIRMWARE_8126A_2},
-    [CFG_METHOD_33] = {"RTL8126A",       FIRMWARE_8126A_3},
-    [CFG_METHOD_DEFAULT] = {"Unknown",   ""            },
+    [0]             = {"", NULL, NULL, 0},
+    [1]             = {"", NULL, NULL, 0},
+    [CFG_METHOD_2]  = {"RTL8125A", NULL, NULL, 0},
+    [CFG_METHOD_3]  = {"RTL8125A", FIRMWARE_8125A_3, rtl8125a_3_fw, rtl8125a_3_fw_len},
+    [CFG_METHOD_4]  = {"RTL8125B", FIRMWARE_8125B_1, rtl8125b_1_fw, rtl8125b_1_fw_len},
+    [CFG_METHOD_5]  = {"RTL8125B", FIRMWARE_8125B_2, rtl8125b_2_fw, rtl8125b_2_fw_len},
+    [CFG_METHOD_6]  = {"RTL8168KB", FIRMWARE_8125A_3, rtl8125a_3_fw, rtl8125a_3_fw_len},
+    [CFG_METHOD_7]  = {"RTL8168KB", FIRMWARE_8125B_2, rtl8125b_2_fw, rtl8125b_2_fw_len},
+    [CFG_METHOD_8]  = {"RTL8125BP", NULL, NULL, 0},
+    [CFG_METHOD_9]  = {"RTL8125BP", FIRMWARE_8125BP_2, rtl8125bp_2_fw, rtl8125bp_2_fw_len},
+    [CFG_METHOD_10] = {"RTL8125D", FIRMWARE_8125D_1, rtl8125d_1_fw, rtl8125d_1_fw_len},
+    [CFG_METHOD_11] = {"RTL8125D", FIRMWARE_8125D_2, rtl8125d_2_fw, rtl8125d_2_fw_len},
+    [CFG_METHOD_12] = {"RTL8125CP", NULL,   NULL, 0},
+    [CFG_METHOD_13] = {"RTL8168KD", FIRMWARE_8125D_2, rtl8125d_2_fw, rtl8125d_2_fw_len},
+    [CFG_METHOD_31] = {"RTL8126A", FIRMWARE_8126A_2, rtl8126a_2_fw, rtl8126a_2_fw_len},
+    [CFG_METHOD_32] = {"RTL8126A", FIRMWARE_8126A_2, rtl8126a_2_fw, rtl8126a_2_fw_len},
+    [CFG_METHOD_33] = {"RTL8126A", FIRMWARE_8126A_3, rtl8126a_3_fw, rtl8126a_3_fw_len},
+    [CFG_METHOD_DEFAULT] = {"Unknown", NULL, NULL, 0},
 };
 
 #endif  /* ENABLE_USE_FIRMWARE_FILE */
@@ -431,7 +440,7 @@ void RTL8125::rtl812xEnable()
     tp->rms = mtu + VLAN_ETH_HLEN + ETH_FCS_LEN;
     
 #ifdef ENABLE_USE_FIRMWARE_FILE
-    requestFirmware();
+    requestFirmware(tp);
 #endif  /* ENABLE_USE_FIRMWARE_FILE */
 
     /* restore last modified mac address */
@@ -454,6 +463,32 @@ void RTL8125::rtl812xEnable()
     intrMask = intrMaskRxTx;
     timerValue = 0;
     RTL_W32(tp, IMR0_8125, intrMask);
+}
+
+void RTL8125::rtl812xSetOffloadFeatures(bool active)
+{
+    ifnet_t ifnet = netif->getIfnet();
+    ifnet_offload_t offload;
+    UInt32 mask = 0;
+
+    if (enableTSO4)
+        mask |= IFNET_TSO_IPV4;
+    
+    if (enableTSO6)
+        mask |= IFNET_TSO_IPV6;
+
+    offload = ifnet_offload(ifnet);
+    
+    if (active) {
+        offload |= mask;
+        DebugLog("Enable hardware offload features: %x!\n", mask);
+    } else {
+        offload &= ~mask;
+        DebugLog("Disable hardware offload features: %x!\n", mask);
+    }
+    
+    if (ifnet_set_offload(ifnet, offload))
+        IOLog("Error setting hardware offload: %x!\n", offload);
 }
 
 void RTL8125::rtl812xSetMrrs(struct rtl8125_private *tp, UInt8 setting)
@@ -591,11 +626,14 @@ void RTL8125::rtl812xHwConfig(struct rtl8125_private *tp)
     rtl8125_set_mac_ocp_bit(tp, 0xEA84, (BIT_1 | BIT_0));
     
     /* Setup the descriptor rings. */
-    txTailPtr0 = txClosePtr0 = 0;
     txNextDescIndex = txDirtyDescIndex = 0;
     txNumFreeDesc = kNumTxDesc;
     rxNextDescIndex = 0;
     
+#ifdef ENABLE_TX_NO_CLOSE
+    txTailPtr0 = txClosePtr0 = 0;
+#endif  /* ENABLE_TX_NO_CLOSE*/
+
     RTL_W32(tp, TxDescStartAddrLow, (txPhyAddr & 0x00000000ffffffff));
     RTL_W32(tp, TxDescStartAddrHigh, (txPhyAddr >> 32));
     RTL_W32(tp, RxDescAddrLow, (rxPhyAddr & 0x00000000ffffffff));
@@ -605,8 +643,10 @@ void RTL8125::rtl812xHwConfig(struct rtl8125_private *tp)
     RTL_W32(tp, TxConfig, (TX_DMA_BURST_unlimited << TxDMAShift) |
             (InterFrameGap << TxInterFrameGapShift));
 
+#ifdef ENABLE_TX_NO_CLOSE
     /* Enable TxNoClose. */
     RTL_W32(tp, TxConfig, (RTL_R32(tp, TxConfig) | BIT_6));
+#endif  /* ENABLE_TX_NO_CLOSE */
 
     /* Disable double VLAN. */
     RTL_W16(tp, DOUBLE_VLAN_CONFIG, 0);
@@ -809,6 +849,8 @@ void RTL8125::rtl812xHwConfig(struct rtl8125_private *tp)
     udelay(10);
 }
 
+#ifdef ENABLE_TX_NO_CLOSE
+
 UInt32 RTL8125::rtl812xGetHwCloPtr(struct rtl8125_private *tp)
 {
     UInt32 cloPtr;
@@ -829,6 +871,8 @@ void RTL8125::rtl812xDoorbell(struct rtl8125_private *tp, UInt32 txTailPtr)
         RTL_W16(tp, tp->SwTailPtrReg, txTailPtr & 0xffff);
 }
 
+#endif  /* ENABLE_TX_NO_CLOSE */
+
 void RTL8125::getChecksumResult(mbuf_t m, UInt32 status1, UInt32 status2)
 {
     mbuf_csum_performed_flags_t performed = 0;
@@ -846,21 +890,42 @@ void RTL8125::getChecksumResult(mbuf_t m, UInt32 status1, UInt32 status2)
         mbuf_set_csum_performed(m, performed, value);
 }
 
-UInt32 RTL8125::updateTimerValue(UInt32 status)
+UInt32 RTL8125::updateTimerValue(struct rtl8125_private *tp, UInt32 status)
 {
     UInt32 newTimerValue = 0;
-
+    
     if (status & (RxOK | TxOK)) {
+        if (tp->speed < SPEED_1000) {
+            newTimerValue = kTimerBulk;
+            goto done;
+        }
+        if (mtu > MSS_MAX) {
+            if ((totalDescs > 96) || (totalDescs < 4))
+                newTimerValue = kTimerLat2;
+            else
+                newTimerValue = kTimerDefault;
+            
+            goto done;
+        }
+        if ((totalDescs > 4) && (totalBytes / totalDescs) > 2000) {
+            newTimerValue = kTimerBulk;
+            goto done;
+        }
+        if ((totalDescs > 35) || (totalBytes < 1500)) {
+            newTimerValue = kTimerLat1;
+            goto done;
+        }
         newTimerValue = kTimerDefault;
     }
 
+done:
 #ifdef DEBUG_INTR
-        if (status & PCSTimeout)
-            tmrInterrupts++;
-        
-        if (totalDescs > maxTxPkt) {
-            maxTxPkt = totalDescs;
-        }
+    if (status & PCSTimeout)
+        tmrInterrupts++;
+    
+    if (totalDescs > maxTxPkt) {
+        maxTxPkt = totalDescs;
+    }
 #endif
 
 clear_count:
@@ -949,19 +1014,26 @@ void RTL8125::rtl812xGetEEEMode(struct rtl8125_private *tp)
     UInt16 val;
     
     /* Get supported EEE. */
-    val = rtl8125_mdio_direct_read_phy_ocp(tp, 0xA5C4);
-    sup = mmd_eee_cap_to_ethtool_sup_t(val);
-    DebugLog("EEE supported: %u\n", sup);
+    //val = rtl8125_mdio_direct_read_phy_ocp(tp, 0xA5C4);
+    //sup = mmd_eee_cap_to_ethtool_sup_t(val);
+    sup = tp->eee.supported;
+    DebugLog("EEE supported: 0x%0x\n", sup);
 
     /* Get advertisement EEE */
     val = rtl8125_mdio_direct_read_phy_ocp(tp, 0xA5D0);
     adv = mmd_eee_adv_to_ethtool_adv_t(val);
-    DebugLog("EEE advertised: %u\n", adv);
+    
+    val = rtl8125_mdio_direct_read_phy_ocp(tp, 0xA6D4);
+    
+    if (val & RTK_EEE_ADVERTISE_2500FULL)
+        adv |= ADVERTISED_2500baseX_Full;
+
+    DebugLog("EEE advertised: 0x%0x\n", adv);
 
     /* Get LP advertisement EEE */
     val = rtl8125_mdio_direct_read_phy_ocp(tp, 0xA5D2);
     lp = mmd_eee_adv_to_ethtool_adv_t(val);
-    DebugLog("EEE link partner: %u\n", lp);
+    DebugLog("EEE link partner: 0x%0x\n", lp);
 
     val = rtl8125_mdio_direct_read_phy_ocp(tp, 0xA6D0);
     
@@ -1359,88 +1431,39 @@ void RTL8125::statUpdateThread()
 
 #ifdef ENABLE_USE_FIRMWARE_FILE
 
-IOReturn RTL8125::requestFirmware()
+void RTL8125::requestFirmware(struct rtl8125_private *tp)
 {
-    struct rtl8125_private *tp = &linuxData;
-    IOReturn err = kOSReturnSuccess;
-    
-    if (fwMem) {
-        IOLog("Firmware already loaded.\n");
+    if (tp->rtl_fw) {
+        DebugLog("Firmware already loaded.\n");
         goto done;
     }
-    if ((!tp->fw_name) || (strlen(tp->fw_name) == 0)) {
+    tp->fw_name = rtlChipFwInfos[tp->mcfg].fw_name;
+    
+    firmware.fw.size = rtlChipFwInfos[tp->mcfg].fw_size;
+    firmware.fw.data = rtlChipFwInfos[tp->mcfg].fw_data;
+
+    if (!firmware.fw.data || !firmware.fw.size || !tp->fw_name) {
         IOLog("No firmware for chip.\n");
         goto done;
     }
-    IOLockLock(fwLock);
-    
-    err = OSKextRequestResource(OSKextGetCurrentIdentifier(), tp->fw_name, fwRequestCallback, (void *)this, NULL);
+    firmware.rtl_fw.fw = &firmware.fw;
+    firmware.rtl_fw.fw_name = tp->fw_name;
+    firmware.rtl_fw.phy_write = rtl8125_mdio_write;
+    firmware.rtl_fw.phy_read = rtl8125_mdio_read;
+    firmware.rtl_fw.mac_mcu_write = mac_mcu_write;
+    firmware.rtl_fw.mac_mcu_read = mac_mcu_read;
 
-    if (err != kOSReturnSuccess) {
-        IOLog("Failed to request firmware.\n");
-        goto unlock;
-    }
-    IOLockSleep(fwLock, this, 0);
-    
-unlock:
-    IOLockUnlock(fwLock);
+    tp->rtl_fw = &firmware.rtl_fw;
 
-done:
-    return err;
-}
-
-void RTL8125::fwRequestCallback(OSKextRequestTag requestTag,
-                                    OSReturn result,
-                                    const void* resourceData,
-                                    uint32_t resourceDataLength,
-                                    void *context)
-{
-    RTL8125 *me = (RTL8125 *) context;
-    struct rtl812x_firmware *fware;
-    void *p;
-    
-    IOLockLock(me->fwLock);
-    
-    if (result == kOSReturnSuccess) {
-        me->fwMemSize = resourceDataLength + sizeof(struct firmware) + sizeof(struct rtl8125_fw);
-        me->fwMem = IOMallocZero(me->fwMemSize);
-        
-        if (me->fwMem) {
-            fware = (struct rtl812x_firmware *)me->fwMem;
-            p = &fware->raw_data[0];
-            memcpy(p, resourceData, resourceDataLength);
-            
-            fware->fw.size = resourceDataLength;
-            fware->fw.data = (const u8 *)p;
-            
-            fware->rtl_fw.fw = &fware->fw;
-            fware->rtl_fw.fw_name = me->linuxData.fw_name;
-            fware->rtl_fw.phy_write = rtl8125_mdio_write;
-            fware->rtl_fw.phy_read = rtl8125_mdio_read;
-            fware->rtl_fw.mac_mcu_write = mac_mcu_write;
-            fware->rtl_fw.mac_mcu_read = mac_mcu_read;
-
-            me->linuxData.rtl_fw = &fware->rtl_fw;
-
-            if (!rtl8125_fw_format_ok(&fware->rtl_fw) || !rtl8125_fw_data_ok(&fware->rtl_fw)) {
-                IOFree(me->fwMem, me->fwMemSize);
-                me->fwMem = NULL;
-                me->fwMemSize = 0;
-                me->linuxData.rtl_fw = NULL;
-                IOLog("Failed to validate firmware file.\n");
-            } else {
-                DebugLog("Firmware file %s loaded.\n", me->linuxData.fw_name);
-            }
-        }
+    if (!rtl8125_fw_format_ok(&firmware.rtl_fw) || !rtl8125_fw_data_ok(&firmware.rtl_fw)) {
+        tp->rtl_fw = NULL;
+        IOLog("Failed to validate firmware.\n");
     } else {
-        IOLog("Failed to load firmware.\n");
+        IOLog("Firmware file %s ok.\n", tp->fw_name);
     }
-    IOLockUnlock(me->fwLock);
     
-    /*
-     * Wake sleeping task in requestFirmware.
-     */
-    IOLockWakeup(me->fwLock, me, true);
+done:
+    return;
 }
 
 #endif  /* ENABLE_USE_FIRMWARE_FILE */

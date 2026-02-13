@@ -95,7 +95,6 @@ struct rtl8125_fw {
 struct rtl812x_firmware {
     struct firmware fw;
     struct rtl8125_fw rtl_fw;
-    u8 raw_data[0];
 };
 
 #ifdef __cplusplus
