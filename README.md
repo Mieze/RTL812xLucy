@@ -1,31 +1,31 @@
 # RTL812xLucy
 
-A new macOS driver for the Realtek RTL812x family of 2.5GBit Ethernet Controllers
+A new macOS driver for the Realtek RTL812x family of 2.5GBit and 5Gbit Ethernet Controllers
 
 **Please direct support requests to the project's thread on [Insanelymac.com](https://www.insanelymac.com/forum/topic/362326-rtl812xlucy-for-the-realtek-rtl812x-family/)**
 
 
 **Key Features of RTL812xLucy**
 
-* Supports all versions of Realtek's RTL8125 2.5GBit Ethernet Controllers:
+* Supports all versions of Realtek's RTL8125 2.5Gbit and RTL8126 5Gbit Ethernet Controllers:
   - RTL8125A
   - RTL8125B
   - RTL8125BP
   - RTL8125CP
   - RTL8125D
+  - RTL8126A
 * Support for AppleVTD (Tahoe included), but also works without it.
 * Support for TCP/IPv4, UDP/IPv4, TCP/IPv6 and UDP/IPv6 checksum offload.
-* Supports jumbo frames up to 4076 bytes.
-* Fully optimized for Catalina. Note that older versions of macOS might not support 2.5GB Ethernet.
+* Supports jumbo frames up to 9000 bytes.
+* Fully optimized for Catalina. Note that older versions of macOS might not support 2.5Gbit and 5Gbit Ethernet.
 * Support for Energy Efficient Ethernet (EEE).
+* Support for VLAN tagging in hardware.
 * The driver is published under GPLv2.
 
 **Current Status**
 
 * The driver has been successfully tested with Tahoe, Sequoia and Monterey but should work fine with Catalina and above.
 * Due to performance problems under Tahoe TCP segmentation offload (TSO) is currently disabled but will be added back ASAP. As a result, CPU load is a little bit higher than usal during packet transmission (tx activity).
-* VLAN and WoL support are implemented but untested and may not work as expected.
-* Support for the RTL8126 series of 5 Gbit Ethernet controllers will be added after the aforementioned problems have been fixed.
 
 **A word on AppleVTD**
 
