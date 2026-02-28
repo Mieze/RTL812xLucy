@@ -39,14 +39,14 @@
 				<key>µsPollTime2G</key>
 				<integer>160</integer>
 				<key>µsPollTime5G</key>
-				<integer>120</integer>
+				<integer>130</integer>
 			</dict>
 			<key>DriverVersion</key>
 			<string>$MODULE_VERSION</string>
 			<key>IOClass</key>
 			<string>RTL8125</string>
 			<key>IOPCIPrimaryMatch</key>
-			<string>0x812510ec 0x81251186 0x300010ec</string>
+			<string>0x812510ec 0x81251186 0x300010ec 0x812610ec 0x500010ec</string>
 			<key>IOPCITunnelCompatible</key>
 			<false/>
 			<key>IOProbeScore</key>

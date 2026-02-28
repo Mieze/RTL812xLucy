@@ -136,7 +136,7 @@ done:
     return result;
 }
 
-void RTL8125::setupASPM(IOPCIDevice *provider, bool allowL1)
+void RTL8125::setupASPM(IOPCIDevice *provider, bool allowL0s, bool allowL1)
 {
     IOOptionBits aspmState = 0;
     UInt32 pcieLinkCap = 0;
@@ -146,7 +146,7 @@ void RTL8125::setupASPM(IOPCIDevice *provider, bool allowL1)
         DebugLog("PCIe link capability: 0x%08x.\n", pcieLinkCap);
 
         if (enableASPM && (pcieLinkCap & kIOPCIELinkCapASPMCompl)) {
-            if (pcieLinkCap & kIOPCIELinkCapL0sSup)
+            if ((pcieLinkCap & kIOPCIELinkCapL0sSup) && allowL0s)
                 aspmState |= kIOPCILinkControlASPMBitsL0s;
             
             if ((pcieLinkCap & kIOPCIELinkCapL1Sup) && allowL1)
@@ -208,15 +208,14 @@ IOReturn RTL8125::setPowerStateSleepAction(OSObject *owner, void *arg1, void *ar
 
 bool RTL8125::rtl812xIdentifyChip(struct rtl8125_private *tp)
 {
-    UInt32 reg,val32;
+    UInt32 reg, val32;
     UInt32 ICVerID;
-    bool result = true;
     
     val32 = RTL_R32(tp, TxConfig);
     reg = val32 & 0x7c800000;
     ICVerID = val32 & 0x00700000;
 
-    tp->chipset = 0xffffffff;
+    tp->mcfg = CFG_METHOD_DEFAULT;
     tp->HwIcVerUnknown = false;
 
     switch (reg) {
@@ -295,12 +294,29 @@ bool RTL8125::rtl812xIdentifyChip(struct rtl8125_private *tp)
             //tp->efuse_ver = EFUSE_SUPPORT_V4;
             break;
             
+        case 0x64800000:
+            if (ICVerID == 0x00000000) {
+                tp->mcfg = CFG_METHOD_31;
+                tp->chipset = 12;
+            } else if (ICVerID == 0x100000) {
+                tp->mcfg = CFG_METHOD_32;
+                tp->chipset = 13;
+            } else if (ICVerID == 0x200000) {
+                tp->mcfg = CFG_METHOD_33;
+                tp->chipset = 14;
+            } else {
+                tp->mcfg = CFG_METHOD_33;
+                tp->chipset = 14;
+                tp->HwIcVerUnknown = TRUE;
+            }
+            //tp->efuse_ver = EFUSE_SUPPORT_V4;
+            break;
+            
         default:
             DebugLog("Unknown chip version (%x)\n", reg);
             tp->mcfg = CFG_METHOD_DEFAULT;
             tp->HwIcVerUnknown = TRUE;
             //tp->efuse_ver = EFUSE_NOT_SUPPORT;
-            result = false;
             break;
     }
 
@@ -327,7 +343,7 @@ bool RTL8125::rtl812xIdentifyChip(struct rtl8125_private *tp)
     tp->fw_name = NULL;
 #endif  /* ENABLE_USE_FIRMWARE_FILE */
     
-    return result;
+    return (tp->mcfg == CFG_METHOD_DEFAULT) ? false : true;
 }
 
 void RTL8125::rtl812xInitMacAddr(struct rtl8125_private *tp)
@@ -338,9 +354,19 @@ void RTL8125::rtl812xInitMacAddr(struct rtl8125_private *tp)
     for (i = 0; i < kIOEthernetAddressSize; i++)
         macAddr.bytes[i] = RTL_R8(tp, MAC0 + i);
 
-    *(u32*)&macAddr.bytes[0] = RTL_R32(tp, BACKUP_ADDR0_8125);
-    *(u16*)&macAddr.bytes[4] = RTL_R16(tp, BACKUP_ADDR1_8125);
+    DebugLog("Current MAC: %2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x\n",
+             macAddr.bytes[0], macAddr.bytes[1],
+             macAddr.bytes[2], macAddr.bytes[3],
+             macAddr.bytes[4], macAddr.bytes[5]);
+
+    *(u32*)&origMacAddr.bytes[0] = RTL_R32(tp, BACKUP_ADDR0_8125);
+    *(u16*)&origMacAddr.bytes[4] = RTL_R16(tp, BACKUP_ADDR1_8125);
     
+    DebugLog("Backup MAC: %2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x\n",
+          origMacAddr.bytes[0], origMacAddr.bytes[1],
+          origMacAddr.bytes[2], origMacAddr.bytes[3],
+          origMacAddr.bytes[4], origMacAddr.bytes[5]);
+
     if (is_valid_ether_addr((UInt8 *)&macAddr.bytes))
         goto done;
 
@@ -355,10 +381,10 @@ void RTL8125::rtl812xInitMacAddr(struct rtl8125_private *tp)
     DebugLog("Using random MAC address.\n");
     
 done:
-    memcpy(&origMacAddr.bytes, &macAddr.bytes, sizeof(struct IOEthernetAddress));
+    //memcpy(&origMacAddr.bytes, &macAddr.bytes, sizeof(struct IOEthernetAddress));
     memcpy(&currMacAddr.bytes, &macAddr.bytes, sizeof(struct IOEthernetAddress));
 
-    rtl812x_rar_set(&linuxData, (UInt8 *)&currMacAddr.bytes);
+    rtl8125_rar_set(&linuxData, (UInt8 *)&currMacAddr.bytes);
 }
 
 bool RTL8125::rtl812xInit()
@@ -377,11 +403,11 @@ bool RTL8125::rtl812xInit()
     tp->phy_reset_pending = rtl8125_xmii_reset_pending;
     tp->link_ok = rtl8125_xmii_link_ok;
 
-    if (!rtl812x_aspm_is_safe(tp)) {
+    if (!rtl8125_aspm_is_safe(tp)) {
         IOLog("Hardware doesn't support ASPM properly. Disable it!\n");
         enableASPM = false;
     }
-    setupASPM(pciDevice, enableASPM);
+    setupASPM(pciDevice, true, enableASPM);
     rtl8125_init_software_variable(tp, enableASPM);
     
     /* Setup lpi timer. */
@@ -407,7 +433,7 @@ bool RTL8125::rtl812xInit()
     rtl8125_eeprom_type(tp);
 
     if (tp->eeprom_type == EEPROM_TYPE_93C46 || tp->eeprom_type == EEPROM_TYPE_93C56)
-            rtl8125_set_eeprom_sel_low(tp);
+        rtl8125_set_eeprom_sel_low(tp);
 
     rtl812xInitMacAddr(tp);
 
@@ -444,7 +470,7 @@ void RTL8125::rtl812xEnable()
 #endif  /* ENABLE_USE_FIRMWARE_FILE */
 
     /* restore last modified mac address */
-    rtl812x_rar_set(&linuxData, (UInt8 *)&currMacAddr.bytes);
+    rtl8125_rar_set(&linuxData, (UInt8 *)&currMacAddr.bytes);
     rtl8125_check_hw_phy_mcu_code_ver(tp);
 
     tp->resume_not_chg_speed = 0;
@@ -551,7 +577,6 @@ void RTL8125::rtl812xHwInit(struct rtl8125_private *tp)
     rtl8125_disable_cfg9346_write(tp);
     rtl8125_disable_magic_packet(tp);
     rtl8125_disable_d0_speedup(tp);
-    //rtl8125_set_pci_pme(tp, 0);
     
     rtl8125_enable_magic_packet(tp);
 
@@ -630,10 +655,6 @@ void RTL8125::rtl812xHwConfig(struct rtl8125_private *tp)
     txNumFreeDesc = kNumTxDesc;
     rxNextDescIndex = 0;
     
-#ifdef ENABLE_TX_NO_CLOSE
-    txTailPtr0 = txClosePtr0 = 0;
-#endif  /* ENABLE_TX_NO_CLOSE*/
-
     RTL_W32(tp, TxDescStartAddrLow, (txPhyAddr & 0x00000000ffffffff));
     RTL_W32(tp, TxDescStartAddrHigh, (txPhyAddr >> 32));
     RTL_W32(tp, RxDescAddrLow, (rxPhyAddr & 0x00000000ffffffff));
@@ -646,6 +667,7 @@ void RTL8125::rtl812xHwConfig(struct rtl8125_private *tp)
 #ifdef ENABLE_TX_NO_CLOSE
     /* Enable TxNoClose. */
     RTL_W32(tp, TxConfig, (RTL_R32(tp, TxConfig) | BIT_6));
+    txTailPtr0 = txClosePtr0 = 0;
 #endif  /* ENABLE_TX_NO_CLOSE */
 
     /* Disable double VLAN. */
@@ -661,6 +683,9 @@ void RTL8125::rtl812xHwConfig(struct rtl8125_private *tp)
 
     rtl812xSetMrrs(tp, 0x40);
 
+    if ((tp->mcfg == CFG_METHOD_31) || (tp->mcfg == CFG_METHOD_32) || (tp->mcfg == CFG_METHOD_31)) {
+        void rtl8126_disable_l1_timeout(struct rtl8125_private *tp);
+    }
     RTL_W32(tp, RSS_CTRL_8125, 0x00);
 
     RTL_W16(tp, Q_NUM_CTRL_8125, 0);
@@ -670,12 +695,27 @@ void RTL8125::rtl812xHwConfig(struct rtl8125_private *tp)
     rtl8125_mac_ocp_write(tp, 0xC140, 0xFFFF);
     rtl8125_mac_ocp_write(tp, 0xC142, 0xFFFF);
 
+#ifdef ENABLE_USE_FIRMWARE_FILE
+    /* Taken from r8169 */
+    mac_ocp_data = rtl8125_mac_ocp_read(tp, 0xd3e2);
+    mac_ocp_data &= ~0x0fff;
+    mac_ocp_data |= 0x03a9;
+    rtl8125_mac_ocp_write(tp, 0xd3e2, mac_ocp_data);
+
+    mac_ocp_data = rtl8125_mac_ocp_read(tp, 0xd3e4);
+    mac_ocp_data &= ~0x00ff;
+    rtl8125_mac_ocp_write(tp, 0xd3e4, mac_ocp_data);
+#endif /* ENABLE_USE_FIRMWARE_FILE */
+
     /*
      * Disabling the new tx descriptor format seems to prevent
      * tx timeouts when using TSO.
      */
     mac_ocp_data = rtl8125_mac_ocp_read(tp, 0xEB58);
     
+    if (tp->mcfg == CFG_METHOD_32 || tp->mcfg == CFG_METHOD_33)
+        mac_ocp_data &= ~(BIT_0 | BIT_1);
+
 #ifdef USE_NEW_TX_DESC
     mac_ocp_data |= (BIT_0);
 #else
@@ -687,22 +727,32 @@ void RTL8125::rtl812xHwConfig(struct rtl8125_private *tp)
     mac_ocp_data = rtl8125_mac_ocp_read(tp, 0xE614);
     mac_ocp_data &= ~(BIT_10 | BIT_9 | BIT_8);
     
-    if (tp->mcfg == CFG_METHOD_4 || tp->mcfg == CFG_METHOD_5 ||
-        tp->mcfg == CFG_METHOD_7)
-        mac_ocp_data |= ((2 & 0x07) << 8);
-    else
-        mac_ocp_data |= ((3 & 0x07) << 8);
-    
+    if (tp->mcfg == CFG_METHOD_31 || tp->mcfg == CFG_METHOD_32 ||
+        tp->mcfg == CFG_METHOD_33) {
+
+#ifdef ENABLE_TX_NO_CLOSE
+        mac_ocp_data |= 0x0400;
+#else
+        mac_ocp_data |= 0x0300;
+#endif  /* ENABLE_TX_NO_CLOSE */
+
+    } else if (tp->mcfg == CFG_METHOD_4 || tp->mcfg == CFG_METHOD_5 ||
+               tp->mcfg == CFG_METHOD_7) {
+        mac_ocp_data |= 0x0200;
+    } else {
+        mac_ocp_data |= 0x0300;
+    }
     rtl8125_mac_ocp_write(tp, 0xE614, mac_ocp_data);
 
     /* Set number of tx queues to 1. */
     mac_ocp_data = rtl8125_mac_ocp_read(tp, 0xE63E);
-    mac_ocp_data &= ~(BIT_11 | BIT_10);
-    rtl8125_mac_ocp_write(tp, 0xE63E, mac_ocp_data);
-
-    mac_ocp_data = rtl8125_mac_ocp_read(tp, 0xE63E);
-    mac_ocp_data &= ~(BIT_5 | BIT_4);
-    mac_ocp_data |= (0x02 << 4);
+    mac_ocp_data &= ~(BIT_11 | BIT_10 | BIT_5 | BIT_4);
+    
+    if (!(tp->mcfg == CFG_METHOD_4 ||
+          tp->mcfg == CFG_METHOD_5 ||
+          tp->mcfg == CFG_METHOD_7))
+        mac_ocp_data |= 0x0020;
+    
     rtl8125_mac_ocp_write(tp, 0xE63E, mac_ocp_data);
 
     rtl8125_enable_mcu(tp, 0);
@@ -749,14 +799,25 @@ void RTL8125::rtl812xHwConfig(struct rtl8125_private *tp)
             break;
     }
 
+#ifdef ENABLE_USE_FIRMWARE_FILE
+        rtl8125_mac_ocp_write(tp, 0xE0C0, 0x4403);
+#else
     if (tp->mcfg == CFG_METHOD_10 || tp->mcfg == CFG_METHOD_11 ||
         tp->mcfg == CFG_METHOD_13)
         rtl8125_mac_ocp_write(tp, 0xE0C0, 0x4403);
     else
         rtl8125_mac_ocp_write(tp, 0xE0C0, 0x4000);
+#endif /* ENABLE_USE_FIRMWARE_FILE */
 
+#ifdef ENABLE_USE_FIRMWARE_FILE
+    mac_ocp_data = rtl8125_mac_ocp_read(tp, 0xE052);
+    mac_ocp_data &= ~0x0080;
+    mac_ocp_data |= 0x0068;
+    rtl8125_mac_ocp_write(tp, 0xE052, mac_ocp_data);
+#else
     rtl8125_set_mac_ocp_bit(tp, 0xE052, (BIT_6 | BIT_5));
     rtl8125_clear_mac_ocp_bit(tp, 0xE052, BIT_3 | BIT_7);
+#endif /* ENABLE_USE_FIRMWARE_FILE */
 
     switch (tp->mcfg) {
         case CFG_METHOD_2:
@@ -771,7 +832,13 @@ void RTL8125::rtl812xHwConfig(struct rtl8125_private *tp)
 
     mac_ocp_data = rtl8125_mac_ocp_read(tp, 0xD430);
     mac_ocp_data &= ~(BIT_11 | BIT_10 | BIT_9 | BIT_8 | BIT_7 | BIT_6 | BIT_5 | BIT_4 | BIT_3 | BIT_2 | BIT_1 | BIT_0);
+    
+#ifdef ENABLE_USE_FIRMWARE_FILE
+    mac_ocp_data |= 0x47F;
+#else
     mac_ocp_data |= 0x45F;
+#endif /* ENABLE_USE_FIRMWARE_FILE */
+    
     rtl8125_mac_ocp_write(tp, 0xD430, mac_ocp_data);
 
     //rtl8125_mac_ocp_write(tp, 0xE0C0, 0x4F87);
@@ -790,6 +857,10 @@ void RTL8125::rtl812xHwConfig(struct rtl8125_private *tp)
 
     mac_ocp_data = rtl8125_mac_ocp_read(tp, 0xEA1C);
     mac_ocp_data &= ~(BIT_2);
+    
+    if (tp->mcfg == CFG_METHOD_32 || tp->mcfg == CFG_METHOD_33)
+        mac_ocp_data &= ~(BIT_9 | BIT_8);
+
     rtl8125_mac_ocp_write(tp, 0xEA1C, mac_ocp_data);
 
     rtl8125_clear_tcam_entries(tp);
@@ -890,13 +961,19 @@ void RTL8125::getChecksumResult(mbuf_t m, UInt32 status1, UInt32 status2)
         mbuf_set_csum_performed(m, performed, value);
 }
 
-UInt32 RTL8125::updateTimerValue(struct rtl8125_private *tp, UInt32 status)
+UInt32 RTL8125::updateIntrMode(struct rtl8125_private *tp, UInt32 status)
 {
     UInt32 newTimerValue = 0;
     
     if (status & (RxOK | TxOK)) {
+        intrMask = intrMaskTimer;
+
         if (tp->speed < SPEED_1000) {
             newTimerValue = kTimerBulk;
+            goto done;
+        }
+        if (tp->speed == SPEED_5000) {
+            newTimerValue = kTimer5000;
             goto done;
         }
         if (mtu > MSS_MAX) {
@@ -916,6 +993,8 @@ UInt32 RTL8125::updateTimerValue(struct rtl8125_private *tp, UInt32 status)
             goto done;
         }
         newTimerValue = kTimerDefault;
+    } else {
+        intrMask = intrMaskRxTx;
     }
 
 done:
@@ -943,14 +1022,14 @@ void RTL8125::rtl812xLinkOnPatch(struct rtl8125_private *tp)
 
     rtl812xHwConfig(tp);
 
+    status = rtl8125_get_phy_status(tp);
+
     if (tp->mcfg == CFG_METHOD_2) {
-        if (rtl8125_get_phy_status(tp)&FullDup)
+        if (status & FullDup)
             RTL_W32(tp, TxConfig, (RTL_R32(tp, TxConfig) | (BIT_24 | BIT_25)) & ~BIT_19);
         else
             RTL_W32(tp, TxConfig, (RTL_R32(tp, TxConfig) | BIT_25) & ~(BIT_19 | BIT_24));
     }
-
-    status = rtl8125_get_phy_status(tp);
 
     switch (tp->mcfg) {
         case CFG_METHOD_2:
@@ -962,6 +1041,9 @@ void RTL8125::rtl812xLinkOnPatch(struct rtl8125_private *tp)
         case CFG_METHOD_8:
         case CFG_METHOD_9:
         case CFG_METHOD_12:
+        case CFG_METHOD_31:
+        case CFG_METHOD_32:
+        case CFG_METHOD_33:
             if (status & _10bps)
                 rtl8125_enable_eee_plus(tp);
             break;
@@ -1050,6 +1132,7 @@ void RTL8125::rtl812xGetEEEMode(struct rtl8125_private *tp)
 
 void RTL8125::rtl812xCheckLinkStatus(struct rtl8125_private *tp)
 {
+    UInt64 now;
     UInt32 status;
     
     status = RTL_R32(tp, PHYstatus);
@@ -1072,10 +1155,13 @@ void RTL8125::rtl812xCheckLinkStatus(struct rtl8125_private *tp)
         } else {
             tp->fcpause = rtl8125_fc_none;
         }
-        if (status & _2500bpsF) {
+        if (status & _5000bpsF) {
+            tp->speed = SPEED_5000;
+            tp->duplex = DUPLEX_FULL;
+        } else if (status & (_2500bpsF | _5000bpsL)) {
             tp->speed = SPEED_2500;
             tp->duplex = DUPLEX_FULL;
-        } else if (status & _1000bpsF) {
+        } else if (status & (_1000bpsF | _2500bpsL | _1000bpsL)) {
                 tp->speed = SPEED_1000;
                 tp->duplex = DUPLEX_FULL;
         } else if (status & _100bps) {
@@ -1098,7 +1184,8 @@ void RTL8125::rtl812xCheckLinkStatus(struct rtl8125_private *tp)
         rtl812xLinkOnPatch(tp);
 
         setLinkUp();
-        timerSource->setTimeoutMS(kTimeoutMS);
+        clock_get_uptime(&now);
+        timerSource->wakeAtTime(now + timerInterval);
     }
 }
 
@@ -1256,7 +1343,7 @@ void RTL8125::setLinkUp()
         pollParms.highThresholdBytes = 0x10000;
         
         if (spd == SPEED_5000)
-            pollParms.pollIntervalTime = pollTime5G;
+            pollParms.pollIntervalTime = (mtu < 4076) ? pollTime5G : (pollTime5G + 10000);
         else if (spd == SPEED_2500)
             pollParms.pollIntervalTime = pollTime2G;
         else if (spd == SPEED_1000)
@@ -1308,7 +1395,13 @@ void RTL8125::rtl812xSetPhyMedium(struct rtl8125_private *tp, UInt8 autoneg, UIn
     DebugLog("speed: %u, duplex: %u, adv: %llx\n", static_cast<unsigned int>(speed), duplex, adv);
     
     if (!rtl8125_is_speed_mode_valid(speed)) {
-        speed = SPEED_2500;
+        if (HW_SUPP_PHY_LINK_SPEED_5000M(tp))
+            speed = SPEED_5000;
+        else if (HW_SUPP_PHY_LINK_SPEED_2500M(tp))
+            speed = SPEED_2500;
+        else
+            speed = SPEED_1000;
+
         duplex = DUPLEX_FULL;
         adv |= tp->advertising;
     }
@@ -1329,7 +1422,7 @@ void RTL8125::rtl812xSetPhyMedium(struct rtl8125_private *tp, UInt8 autoneg, UIn
     giga_ctrl = rtl8125_mdio_read(tp, MII_CTRL1000);
     giga_ctrl &= ~(ADVERTISE_1000HALF | ADVERTISE_1000FULL);
     ctrl_2500 = rtl8125_mdio_direct_read_phy_ocp(tp, 0xA5D4);
-    ctrl_2500 &= ~RTK_ADVERTISE_2500FULL;
+    ctrl_2500 &= ~(RTK_ADVERTISE_2500FULL | RTK_ADVERTISE_5000FULL);
 
     if (autoneg == AUTONEG_ENABLE) {
         /*n-way force*/
@@ -1340,18 +1433,29 @@ void RTL8125::rtl812xSetPhyMedium(struct rtl8125_private *tp, UInt8 autoneg, UIn
 
         if (adv & ADVERTISED_10baseT_Half)
                 auto_nego |= ADVERTISE_10HALF;
+        
         if (adv & ADVERTISED_10baseT_Full)
                 auto_nego |= ADVERTISE_10FULL;
+        
         if (adv & ADVERTISED_100baseT_Half)
                 auto_nego |= ADVERTISE_100HALF;
+        
         if (adv & ADVERTISED_100baseT_Full)
                 auto_nego |= ADVERTISE_100FULL;
+        
         if (adv & ADVERTISED_1000baseT_Half)
                 giga_ctrl |= ADVERTISE_1000HALF;
+        
         if (adv & ADVERTISED_1000baseT_Full)
                 giga_ctrl |= ADVERTISE_1000FULL;
+        
         if (adv & ADVERTISED_2500baseX_Full)
                 ctrl_2500 |= RTK_ADVERTISE_2500FULL;
+        
+        if (HW_SUPP_PHY_LINK_SPEED_5000M(tp)) {
+            if (adv & RTK_ADVERTISED_5000baseX_Full)
+                ctrl_2500 |= RTK_ADVERTISE_5000FULL;
+        }
 
         //flow control
         if (tp->fcpause == rtl8125_fc_full)
@@ -1399,11 +1503,6 @@ void RTL8125::runStatUpdateThread(thread_call_param_t param0)
     ((RTL8125 *) param0)->statUpdateThread();
 }
 
-/*
- * Perform delayed mapping of a defined number of batches
- * and set the ring state to indicate, that mapping is
- * in progress.
- */
 void RTL8125::statUpdateThread()
 {
     struct rtl8125_private *tp = &linuxData;

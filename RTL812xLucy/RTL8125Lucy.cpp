@@ -224,7 +224,7 @@ bool RTL8125::init(OSDictionary *properties)
 
         memset(fallBackMacAddr.bytes, 0, kIOEthernetAddressSize);
         nanoseconds_to_absolutetime(kStatDelayTime, &statDelay);
-        nanoseconds_to_absolutetime(kTimespan4ms, &updatePeriod);
+        nanoseconds_to_absolutetime(kTimerPeriod, &timerInterval);
 
 #ifdef DEBUG_INTR
         lastRxIntrupts = lastTxIntrupts = lastTmrIntrupts = tmrInterrupts = 0;
@@ -464,7 +464,8 @@ void RTL8125::systemWillShutdown(IOOptionBits specifier)
         disable(netif);
         
         /* Restore the original MAC address. */
-        rtl812x_rar_set(&linuxData, (UInt8 *)&origMacAddr.bytes);
+        if (is_valid_ether_addr((UInt8 *)&origMacAddr.bytes))
+            rtl8125_rar_set(&linuxData, (UInt8 *)&origMacAddr.bytes);
     }
     
     DebugLog("systemWillShutdown() <===\n");
@@ -752,7 +753,7 @@ IOOutputQueue* RTL8125::createOutputQueue()
     
     DebugLog("createOutputQueue() <===\n");
 
-    return IOBasicOutputQueue::withTarget(this);
+    return IOBasicOutputQueue::withTarget(this, kTransmitQueueCapacity);
 }
 
 const OSString* RTL8125::newVendorString() const
@@ -873,9 +874,9 @@ IOReturn RTL8125::setPromiscuousMode(bool active)
         mcFilter[1] = *filterAddr;
     }
     rxMode |= tp->rtl8125_rx_config | (RTL_R32(&linuxData, RxConfig) & rtlChipInfo[tp->chipset].RxConfigMask);
-    RTL_W32(&linuxData, RxConfig, rxMode);
-    RTL_W32(&linuxData, MAR1, mcFilter[1]);
-    RTL_W32(&linuxData, MAR0, mcFilter[0]);
+    RTL_W32(tp, RxConfig, rxMode);
+    RTL_W32(tp, MAR1, mcFilter[1]);
+    RTL_W32(tp, MAR0, mcFilter[0]);
 
     if (active)
         set_bit(__PROMISC, &stateFlags);
@@ -905,9 +906,9 @@ IOReturn RTL8125::setMulticastMode(bool active)
         mcFilter[1] = mcFilter[0] = 0;
     }
     rxMode |= tp->rtl8125_rx_config | (RTL_R32(&linuxData, RxConfig) & rtlChipInfo[tp->chipset].RxConfigMask);
-    RTL_W32(&linuxData, RxConfig, rxMode);
-    RTL_W32(&linuxData, MAR1, mcFilter[1]);
-    RTL_W32(&linuxData, MAR0, mcFilter[0]);
+    RTL_W32(tp, RxConfig, rxMode);
+    RTL_W32(tp, MAR1, mcFilter[1]);
+    RTL_W32(tp, MAR0, mcFilter[0]);
 
     if (active)
         set_bit(__M_CAST, &stateFlags);
@@ -921,6 +922,7 @@ IOReturn RTL8125::setMulticastMode(bool active)
 
 IOReturn RTL8125::setMulticastList(IOEthernetAddress *addrs, UInt32 count)
 {
+    struct rtl8125_private *tp = &linuxData;
     UInt32 *filterAddr = (UInt32 *)&multicastFilter;
     UInt64 filter = 0;
     UInt32 i, bitNumber;
@@ -936,8 +938,8 @@ IOReturn RTL8125::setMulticastList(IOEthernetAddress *addrs, UInt32 count)
     } else {
         multicastFilter = 0xffffffffffffffff;
     }
-    RTL_W32(&linuxData, MAR1, *filterAddr);
-    RTL_W32(&linuxData, MAR0, *filterAddr++);
+    RTL_W32(tp, MAR1, *filterAddr);
+    RTL_W32(tp, MAR0, *filterAddr++);
 
     DebugLog("setMulticastList() <===\n");
 
@@ -1043,7 +1045,7 @@ IOReturn RTL8125::setHardwareAddress(const IOEthernetAddress *addr)
     
     if (addr) {
         bcopy(addr->bytes, &currMacAddr.bytes, kIOEthernetAddressSize);
-        rtl812x_rar_set(&linuxData, (UInt8 *)&currMacAddr.bytes);
+        rtl8125_rar_set(&linuxData, (UInt8 *)&currMacAddr.bytes);
         result = kIOReturnSuccess;
     }
     
@@ -1143,18 +1145,19 @@ void RTL8125::txInterrupt()
     struct rtl8125_private *tp = &linuxData;
     mbuf_t m;
     UInt32 nextClosePtr = rtl812xGetHwCloPtr(tp);
-    UInt32 oldDirtyIndex = txDirtyDescIndex;
     UInt32 bytes = 0;
     UInt32 descs = 0;
     UInt32 n;
-
+    static int run = 0;
+    
     n = ((nextClosePtr - txClosePtr0) & tp->MaxTxDescPtrMask);
     
     //DebugLog("txInterrupt() txClosePtr0: %u, nextClosePtr: %u, numDone: %u.\n", txClosePtr0, nextClosePtr, numDone);
     
-    n = min(txNextDescIndex - txDirtyDescIndex, n);
-    txClosePtr0 += n;
-
+    //n = min(txNextDescIndex - txDirtyDescIndex, n);
+    //txClosePtr0 += n;
+    txClosePtr0 = nextClosePtr;
+    
     while (n-- > 0) {
         m = txBufArray[txDirtyDescIndex].mbuf;
         txBufArray[txDirtyDescIndex].mbuf = NULL;
@@ -1174,13 +1177,17 @@ void RTL8125::txInterrupt()
         OSIncrementAtomic(&txNumFreeDesc);
         ++txDirtyDescIndex &= kTxDescMask;
     }
-    if (oldDirtyIndex != txDirtyDescIndex) {
+    if (bytes > 0) {
         if (txNumFreeDesc > kTxQueueWakeTreshhold)
             netif->signalOutputThread();
         
         releaseFreePackets();
         OSAddAtomic(descs, &totalDescs);
         OSAddAtomic(bytes, &totalBytes);
+        run = 0;
+        //DebugLog("txInterrupt() packets: %u, bytes: %u.\n", descs, bytes);
+    } else if (!test_bit(__POLL_MODE, &stateFlags)) {
+        //DebugLog("txInterrupt() %d without packets. txNumFreeDesc: %u.\n", ++run, txNumFreeDesc);
     }
 }
 #else
@@ -1188,7 +1195,6 @@ void RTL8125::txInterrupt()
 {
     mbuf_t m;
     SInt32 numDirty = kNumTxDesc - txNumFreeDesc;
-    UInt32 oldDirtyIndex = txDirtyDescIndex;
     UInt32 bytes = 0;
     UInt32 descs = 0;
     UInt32 descStatus;
@@ -1217,7 +1223,7 @@ void RTL8125::txInterrupt()
         OSIncrementAtomic(&txNumFreeDesc);
         ++txDirtyDescIndex &= kTxDescMask;
     }
-    if (oldDirtyIndex != txDirtyDescIndex) {
+    if (bytes > 0) {
         if (txNumFreeDesc > kTxQueueWakeTreshhold)
             netif->signalOutputThread();
         
@@ -1408,16 +1414,13 @@ void RTL8125::interruptOccurred(OSObject *client, IOInterruptEventSource *src, i
             etherStats->dot3TxExtraEntry.interrupts++;
         }
         if (status & (TxOK | RxOK | PCSTimeout))
-            timerValue = updateTimerValue(tp, status);
-        
+            timerValue = updateIntrMode(tp, status);
+
         RTL_W32(tp, TIMER_INT0_8125, timerValue);
 
-        if (timerValue) {
+        if (timerValue)
             RTL_W32(tp, TCTR0_8125, timerValue);
-            intrMask = intrMaskTimer;
-        } else {
-            intrMask = intrMaskRxTx;
-        }
+
         clear_bit(__POLLING, &stateFlags);
     }
     if (status & LinkChg) {
@@ -1439,12 +1442,14 @@ bool RTL8125::txHangCheck()
     
     if ((txDescDoneCount == txDescDoneLast) && (txNumFreeDesc < kNumTxDesc)) {
         if (++deadlockWarn == kTxCheckTreshhold) {
-            /* Some members of the RTL8125 family seem to be prone to lose transmitter rinterrupts.
-             * In order to avoid false positives when trying to detect transmitter deadlocks, check
-             * the transmitter ring once for completed descriptors before we assume a deadlock.
+            /* Some members of the RTL8125 family seem to be prone to lose
+             * transmitter interrupts. In order to avoid false positives
+             * when trying to detect transmitter deadlocks, check the
+             * transmitter ring once for completed descriptors before we
+             * assume a deadlock.
              */
             DebugLog("Warning: Tx timeout, ISR0=0x%x, IMR0=0x%x, polling=%u.\n", RTL_R32(tp, ISR0_8125),
-                     RTL_R32(tp, IMR0_8125), test_bit(__POLL_MODE, &stateFlags));
+                     RTL_R32(tp, IMR0_8125), stateFlags & __POLL_MODE_M);
             etherStats->dot3TxExtraEntry.timeouts++;
             txInterrupt();
         } else if (deadlockWarn >= kTxDeadlockTreshhold) {
@@ -1524,6 +1529,9 @@ void RTL8125::pollInputPackets(IONetworkInterface *interface, uint32_t maxCount,
 void RTL8125::timerAction(IOTimerEventSource *timer)
 {
     struct rtl8125_private *tp = &linuxData;
+    UInt64 now;
+    
+    clock_get_uptime(&now);
 
 #ifdef DEBUG_INTR
     UInt32 tmrIntr = tmrInterrupts - lastTmrIntrupts;
@@ -1550,8 +1558,8 @@ void RTL8125::timerAction(IOTimerEventSource *timer)
     if (txHangCheck())
         goto done;
     
-    timerSource->setTimeoutMS(kTimeoutMS);
-        
+    timerSource->wakeAtTime(now + timerInterval);
+    
 done:
     txDescDoneLast = txDescDoneCount;
 }

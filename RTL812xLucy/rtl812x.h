@@ -120,6 +120,7 @@ enum mcfg {
 #define D0_SPEED_UP_SPEED_DISABLE    0
 #define D0_SPEED_UP_SPEED_1000       1
 #define D0_SPEED_UP_SPEED_2500       2
+#define D0_SPEED_UP_SPEED_5000       3
 
 #define RTL8125_MAC_MCU_PAGE_SIZE 256 //256 words
 
@@ -159,464 +160,469 @@ static inline u32 rtl8125_ethtool_adv_to_mmd_eee_adv_cap2_t(u32 adv)
 }
 
 enum RTL8125_registers {
-        MAC0            = 0x00,     /* Ethernet hardware address. */
-        MAC4            = 0x04,
-        MAR0            = 0x08,     /* Multicast filter. */
-        MAR1            = 0x0C,        /* Multicast filter. */
-        CounterAddrLow      = 0x10,
-        CounterAddrHigh     = 0x14,
-        CustomLED       = 0x18,
-        TxDescStartAddrLow  = 0x20,
-        TxDescStartAddrHigh = 0x24,
-        TxHDescStartAddrLow = 0x28,
-        TxHDescStartAddrHigh    = 0x2c,
-        FLASH           = 0x30,
-        INT_CFG0_8125   = 0x34,
-        ERSR            = 0x36,
-        ChipCmd         = 0x37,
-        TxPoll          = 0x38,
-        IntrMask        = 0x3C,
-        IntrStatus      = 0x3E,
-        TxConfig        = 0x40,
-        RxConfig        = 0x44,
-        TCTR            = 0x48,
-        Cfg9346         = 0x50,
-        Config0         = 0x51,
-        Config1         = 0x52,
-        Config2         = 0x53,
-        Config3         = 0x54,
-        Config4         = 0x55,
-        Config5         = 0x56,
-        TDFNR           = 0x57,
-        TimeInt0        = 0x58,
-        TimeInt1        = 0x5C,
-        PHYAR           = 0x60,
-        CSIDR           = 0x64,
-        CSIAR           = 0x68,
-        PHYstatus       = 0x6C,
-        MACDBG          = 0x6D,
-        GPIO            = 0x6E,
-        PMCH            = 0x6F,
-        ERIDR           = 0x70,
-        ERIAR           = 0x74,
-        INT_CFG1_8125   = 0x7A,
-        EPHY_RXER_NUM   = 0x7C,
-        EPHYAR          = 0x80,
-        LEDSEL_2_8125   = 0x84,
-        LEDSEL_1_8125   = 0x86,
-        TimeInt2        = 0x8C,
-        LEDSEL_3_8125   = 0x96,
-        OCPDR           = 0xB0,
-        MACOCP          = 0xB0,
-        OCPAR           = 0xB4,
-        SecMAC0         = 0xB4,
-        SecMAC4         = 0xB8,
-        PHYOCP          = 0xB8,
-        DBG_reg         = 0xD1,
-        TwiCmdReg       = 0xD2,
-        MCUCmd_reg      = 0xD3,
-        RxMaxSize       = 0xDA,
-        EFUSEAR         = 0xDC,
-        CPlusCmd        = 0xE0,
-        IntrMitigate    = 0xE2,
-        RxDescAddrLow   = 0xE4,
-        RxDescAddrHigh  = 0xE8,
-        MTPS            = 0xEC,
-        FuncEvent       = 0xF0,
-        PPSW            = 0xF2,
-        FuncEventMask   = 0xF4,
-        TimeInt3        = 0xF4,
-        FuncPresetState = 0xF8,
-        CMAC_IBCR0      = 0xF8,
-        CMAC_IBCR2      = 0xF9,
-        CMAC_IBIMR0     = 0xFA,
-        CMAC_IBISR0     = 0xFB,
-        FuncForceEvent  = 0xFC,
-        //8125
-        IMR0_8125          = 0x38,
-        ISR0_8125          = 0x3C,
-        TPPOLL_8125        = 0x90,
-        IMR1_8125          = 0x800,
-        ISR1_8125          = 0x802,
-        IMR2_8125          = 0x804,
-        ISR2_8125          = 0x806,
-        IMR3_8125          = 0x808,
-        ISR3_8125          = 0x80A,
-        BACKUP_ADDR0_8125  = 0x19E0,
-        BACKUP_ADDR1_8125  = 0X19E4,
-        TCTR0_8125         = 0x0048,
-        TCTR1_8125         = 0x004C,
-        TCTR2_8125         = 0x0088,
-        TCTR3_8125         = 0x001C,
-        TIMER_INT0_8125    = 0x0058,
-        TIMER_INT1_8125    = 0x005C,
-        TIMER_INT2_8125    = 0x008C,
-        TIMER_INT3_8125    = 0x00F4,
-        INT_MITI_V2_0_RX   = 0x0A00,
-        INT_MITI_V2_0_TX   = 0x0A02,
-        INT_MITI_V2_1_RX   = 0x0A08,
-        INT_MITI_V2_1_TX   = 0x0A0A,
-        IMR_V2_CLEAR_REG_8125 = 0x0D00,
-        ISR_V2_8125           = 0x0D04,
-        IMR_V2_SET_REG_8125   = 0x0D0C,
-        TDU_STA_8125       = 0x0D08,
-        RDU_STA_8125       = 0x0D0A,
-        IMR_V4_L2_CLEAR_REG_8125 = 0x0D10,
-        IMR_V4_L2_SET_REG_8125   = 0x0D18,
-        ISR_V4_L2_8125     = 0x0D14,
-        SW_TAIL_PTR0_8125BP = 0x0D30,
-        SW_TAIL_PTR1_8125BP = 0x0D38,
-        HW_CLO_PTR0_8125BP = 0x0D34,
-        HW_CLO_PTR1_8125BP = 0x0D3C,
-        DOUBLE_VLAN_CONFIG = 0x1000,
-        TX_NEW_CTRL        = 0x203E,
-        TNPDS_Q1_LOW_8125  = 0x2100,
-        PLA_TXQ0_IDLE_CREDIT = 0x2500,
-        PLA_TXQ1_IDLE_CREDIT = 0x2504,
-        SW_TAIL_PTR0_8125  = 0x2800,
-        HW_CLO_PTR0_8125   = 0x2802,
-        SW_TAIL_PTR0_8126  = 0x2800,
-        HW_CLO_PTR0_8126   = 0x2800,
-        RDSAR_Q1_LOW_8125  = 0x4000,
-        RSS_CTRL_8125      = 0x4500,
-        Q_NUM_CTRL_8125    = 0x4800,
-        RSS_KEY_8125       = 0x4600,
-        RSS_INDIRECTION_TBL_8125_V2 = 0x4700,
-        EEE_TXIDLE_TIMER_8125   = 0x6048,
-        /* mac ptp */
-        PTP_CTRL_8125      = 0x6800,
-        PTP_STATUS_8125    = 0x6802,
-        PTP_ISR_8125       = 0x6804,
-        PTP_IMR_8125       = 0x6805,
-        PTP_TIME_CORRECT_CMD_8125    = 0x6806,
-        PTP_SOFT_CONFIG_Time_NS_8125 = 0x6808,
-        PTP_SOFT_CONFIG_Time_S_8125  = 0x680C,
-        PTP_SOFT_CONFIG_Time_Sign    = 0x6812,
-        PTP_LOCAL_Time_SUB_NS_8125   = 0x6814,
-        PTP_LOCAL_Time_NS_8125       = 0x6818,
-        PTP_LOCAL_Time_S_8125        = 0x681C,
-        PTP_Time_SHIFTER_S_8125      = 0x6856,
-        PPS_RISE_TIME_NS_8125        = 0x68A0,
-        PPS_RISE_TIME_S_8125         = 0x68A4,
-        PTP_EGRESS_TIME_BASE_NS_8125 = 0XCF20,
-        PTP_EGRESS_TIME_BASE_S_8125  = 0XCF24,
-        /* phy ptp */
-        PTP_CTL                 = 0xE400,
-        PTP_INER                = 0xE402,
-        PTP_INSR                = 0xE404,
-        PTP_SYNCE_CTL           = 0xE406,
-        PTP_GEN_CFG             = 0xE408,
-        PTP_CLK_CFG_8126        = 0xE410,
-        PTP_CFG_NS_LO_8126      = 0xE412,
-        PTP_CFG_NS_HI_8126      = 0xE414,
-        PTP_CFG_S_LO_8126       = 0xE416,
-        PTP_CFG_S_MI_8126       = 0xE418,
-        PTP_CFG_S_HI_8126       = 0xE41A,
-        PTP_TAI_CFG             = 0xE420,
-        PTP_TAI_TS_S_LO         = 0xE42A,
-        PTP_TAI_TS_S_HI         = 0xE42C,
-        PTP_TRX_TS_STA          = 0xE430,
-        PTP_TRX_TS_NS_LO        = 0xE446,
-        PTP_TRX_TS_NS_HI        = 0xE448,
-        PTP_TRX_TS_S_LO         = 0xE44A,
-        PTP_TRX_TS_S_MI         = 0xE44C,
-        PTP_TRX_TS_S_HI         = 0xE44E,
+    MAC0            = 0x00,     /* Ethernet hardware address. */
+    MAC4            = 0x04,
+    MAR0            = 0x08,     /* Multicast filter. */
+    MAR1            = 0x0C,        /* Multicast filter. */
+    CounterAddrLow      = 0x10,
+    CounterAddrHigh     = 0x14,
+    CustomLED       = 0x18,
+    TxDescStartAddrLow  = 0x20,
+    TxDescStartAddrHigh = 0x24,
+    TxHDescStartAddrLow = 0x28,
+    TxHDescStartAddrHigh    = 0x2c,
+    FLASH           = 0x30,
+    INT_CFG0_8125   = 0x34,
+    ERSR            = 0x36,
+    ChipCmd         = 0x37,
+    TxPoll          = 0x38,
+    IntrMask        = 0x3C,
+    IntrStatus      = 0x3E,
+    TxConfig        = 0x40,
+    RxConfig        = 0x44,
+    TCTR            = 0x48,
+    Cfg9346         = 0x50,
+    Config0         = 0x51,
+    Config1         = 0x52,
+    Config2         = 0x53,
+    Config3         = 0x54,
+    Config4         = 0x55,
+    Config5         = 0x56,
+    TDFNR           = 0x57,
+    TimeInt0        = 0x58,
+    TimeInt1        = 0x5C,
+    PHYAR           = 0x60,
+    CSIDR           = 0x64,
+    CSIAR           = 0x68,
+    PHYstatus       = 0x6C,
+    MACDBG          = 0x6D,
+    GPIO            = 0x6E,
+    PMCH            = 0x6F,
+    ERIDR           = 0x70,
+    ERIAR           = 0x74,
+    INT_CFG1_8125   = 0x7A,
+    EPHY_RXER_NUM   = 0x7C,
+    EPHYAR          = 0x80,
+    LEDSEL_2_8125   = 0x84,
+    LEDSEL_1_8125   = 0x86,
+    TimeInt2        = 0x8C,
+    LEDSEL_3_8125   = 0x96,
+    OCPDR           = 0xB0,
+    MACOCP          = 0xB0,
+    OCPAR           = 0xB4,
+    SecMAC0         = 0xB4,
+    SecMAC4         = 0xB8,
+    PHYOCP          = 0xB8,
+    DBG_reg         = 0xD1,
+    TwiCmdReg       = 0xD2,
+    MCUCmd_reg      = 0xD3,
+    RxMaxSize       = 0xDA,
+    EFUSEAR         = 0xDC,
+    CPlusCmd        = 0xE0,
+    IntrMitigate    = 0xE2,
+    RxDescAddrLow   = 0xE4,
+    RxDescAddrHigh  = 0xE8,
+    MTPS            = 0xEC,
+    FuncEvent       = 0xF0,
+    PPSW            = 0xF2,
+    FuncEventMask   = 0xF4,
+    TimeInt3        = 0xF4,
+    FuncPresetState = 0xF8,
+    CMAC_IBCR0      = 0xF8,
+    CMAC_IBCR2      = 0xF9,
+    CMAC_IBIMR0     = 0xFA,
+    CMAC_IBISR0     = 0xFB,
+    FuncForceEvent  = 0xFC,
+    //8125
+    IMR0_8125          = 0x38,
+    ISR0_8125          = 0x3C,
+    TPPOLL_8125        = 0x90,
+    IMR1_8125          = 0x800,
+    ISR1_8125          = 0x802,
+    IMR2_8125          = 0x804,
+    ISR2_8125          = 0x806,
+    IMR3_8125          = 0x808,
+    ISR3_8125          = 0x80A,
+    BACKUP_ADDR0_8125  = 0x19E0,
+    BACKUP_ADDR1_8125  = 0X19E4,
+    TCTR0_8125         = 0x0048,
+    TCTR1_8125         = 0x004C,
+    TCTR2_8125         = 0x0088,
+    TCTR3_8125         = 0x001C,
+    TIMER_INT0_8125    = 0x0058,
+    TIMER_INT1_8125    = 0x005C,
+    TIMER_INT2_8125    = 0x008C,
+    TIMER_INT3_8125    = 0x00F4,
+    INT_MITI_V2_0_RX   = 0x0A00,
+    INT_MITI_V2_0_TX   = 0x0A02,
+    INT_MITI_V2_1_RX   = 0x0A08,
+    INT_MITI_V2_1_TX   = 0x0A0A,
+    IMR_V2_CLEAR_REG_8125 = 0x0D00,
+    ISR_V2_8125           = 0x0D04,
+    IMR_V2_SET_REG_8125   = 0x0D0C,
+    TDU_STA_8125       = 0x0D08,
+    RDU_STA_8125       = 0x0D0A,
+    IMR_V4_L2_CLEAR_REG_8125 = 0x0D10,
+    IMR_V4_L2_SET_REG_8125   = 0x0D18,
+    ISR_V4_L2_8125     = 0x0D14,
+    SW_TAIL_PTR0_8125BP = 0x0D30,
+    SW_TAIL_PTR1_8125BP = 0x0D38,
+    HW_CLO_PTR0_8125BP = 0x0D34,
+    HW_CLO_PTR1_8125BP = 0x0D3C,
+    DOUBLE_VLAN_CONFIG = 0x1000,
+    TX_NEW_CTRL        = 0x203E,
+    TNPDS_Q1_LOW_8125  = 0x2100,
+    PLA_TXQ0_IDLE_CREDIT = 0x2500,
+    PLA_TXQ1_IDLE_CREDIT = 0x2504,
+    SW_TAIL_PTR0_8125  = 0x2800,
+    HW_CLO_PTR0_8125   = 0x2802,
+    SW_TAIL_PTR0_8126  = 0x2800,
+    HW_CLO_PTR0_8126   = 0x2800,
+    RDSAR_Q1_LOW_8125  = 0x4000,
+    RSS_CTRL_8125      = 0x4500,
+    Q_NUM_CTRL_8125    = 0x4800,
+    RSS_KEY_8125       = 0x4600,
+    RSS_INDIRECTION_TBL_8125_V2 = 0x4700,
+    EEE_TXIDLE_TIMER_8125   = 0x6048,
+    /* mac ptp */
+    PTP_CTRL_8125      = 0x6800,
+    PTP_STATUS_8125    = 0x6802,
+    PTP_ISR_8125       = 0x6804,
+    PTP_IMR_8125       = 0x6805,
+    PTP_TIME_CORRECT_CMD_8125    = 0x6806,
+    PTP_SOFT_CONFIG_Time_NS_8125 = 0x6808,
+    PTP_SOFT_CONFIG_Time_S_8125  = 0x680C,
+    PTP_SOFT_CONFIG_Time_Sign    = 0x6812,
+    PTP_LOCAL_Time_SUB_NS_8125   = 0x6814,
+    PTP_LOCAL_Time_NS_8125       = 0x6818,
+    PTP_LOCAL_Time_S_8125        = 0x681C,
+    PTP_Time_SHIFTER_S_8125      = 0x6856,
+    PPS_RISE_TIME_NS_8125        = 0x68A0,
+    PPS_RISE_TIME_S_8125         = 0x68A4,
+    PTP_EGRESS_TIME_BASE_NS_8125 = 0XCF20,
+    PTP_EGRESS_TIME_BASE_S_8125  = 0XCF24,
+    /* phy ptp */
+    PTP_CTL                 = 0xE400,
+    PTP_INER                = 0xE402,
+    PTP_INSR                = 0xE404,
+    PTP_SYNCE_CTL           = 0xE406,
+    PTP_GEN_CFG             = 0xE408,
+    PTP_CLK_CFG_8126        = 0xE410,
+    PTP_CFG_NS_LO_8126      = 0xE412,
+    PTP_CFG_NS_HI_8126      = 0xE414,
+    PTP_CFG_S_LO_8126       = 0xE416,
+    PTP_CFG_S_MI_8126       = 0xE418,
+    PTP_CFG_S_HI_8126       = 0xE41A,
+    PTP_TAI_CFG             = 0xE420,
+    PTP_TAI_TS_S_LO         = 0xE42A,
+    PTP_TAI_TS_S_HI         = 0xE42C,
+    PTP_TRX_TS_STA          = 0xE430,
+    PTP_TRX_TS_NS_LO        = 0xE446,
+    PTP_TRX_TS_NS_HI        = 0xE448,
+    PTP_TRX_TS_S_LO         = 0xE44A,
+    PTP_TRX_TS_S_MI         = 0xE44C,
+    PTP_TRX_TS_S_HI         = 0xE44E,
 
 
-        //TCAM
-        TCAM_NOTVALID_ADDR           = 0xA000,
-        TCAM_VALID_ADDR              = 0xA800,
-        TCAM_MAC_ADDR                = 448,
-        TCAM_VLAN_TAG                = 496,
-        //TCAM V2
-        TCAM_NOTVALID_ADDR_V2           = 0xA000,
-        TCAM_VALID_ADDR_V2              = 0xB000,
-        TCAM_MAC_ADDR_V2                = 0x00,
-        TCAM_VLAN_TAG_V2                = 0x03,
-        //ipc2
-        IB2SOC_SET     = 0x0010,
-        IB2SOC_DATA    = 0x0014,
-        IB2SOC_CMD     = 0x0018,
-        IB2SOC_IMR     = 0x001C,
+    //TCAM
+    TCAM_NOTVALID_ADDR           = 0xA000,
+    TCAM_VALID_ADDR              = 0xA800,
+    TCAM_MAC_ADDR                = 448,
+    TCAM_VLAN_TAG                = 496,
+    //TCAM V2
+    TCAM_NOTVALID_ADDR_V2           = 0xA000,
+    TCAM_VALID_ADDR_V2              = 0xB000,
+    TCAM_MAC_ADDR_V2                = 0x00,
+    TCAM_VLAN_TAG_V2                = 0x03,
+    //ipc2
+    IB2SOC_SET     = 0x0010,
+    IB2SOC_DATA    = 0x0014,
+    IB2SOC_CMD     = 0x0018,
+    IB2SOC_IMR     = 0x001C,
 
-        RISC_IMR_8125BP     = 0x0D20,
-        RISC_ISR_8125BP     = 0x0D22,
+    RISC_IMR_8125BP     = 0x0D20,
+    RISC_ISR_8125BP     = 0x0D22,
 };
 
 enum RTL8125_register_content {
-        /* InterruptStatusBits */
-        SYSErr      = 0x8000,
-        PCSTimeout  = 0x4000,
-        SWInt       = 0x0100,
-        TxDescUnavail   = 0x0080,
-        RxFIFOOver  = 0x0040,
-        LinkChg     = 0x0020,
-        RxDescUnavail   = 0x0010,
-        TxErr       = 0x0008,
-        TxOK        = 0x0004,
-        RxErr       = 0x0002,
-        RxOK        = 0x0001,
-        RxDU1       = 0x0002,
-        RxOK1       = 0x0001,
+    /* InterruptStatusBits */
+    SYSErr      = 0x8000,
+    PCSTimeout  = 0x4000,
+    SWInt       = 0x0100,
+    TxDescUnavail   = 0x0080,
+    RxFIFOOver  = 0x0040,
+    LinkChg     = 0x0020,
+    RxDescUnavail   = 0x0010,
+    TxErr       = 0x0008,
+    TxOK        = 0x0004,
+    RxErr       = 0x0002,
+    RxOK        = 0x0001,
+    RxDU1       = 0x0002,
+    RxOK1       = 0x0001,
 
-        /* RxStatusDesc */
-        RxRWT = (1 << 22),
-        RxRES = (1 << 21),
-        RxRUNT = (1 << 20),
-        RxCRC = (1 << 19),
+    /* RxStatusDesc */
+    RxRWT = (1 << 22),
+    RxRES = (1 << 21),
+    RxRUNT = (1 << 20),
+    RxCRC = (1 << 19),
 
-        RxRWT_V3 = (1 << 18),
-        RxRES_V3 = (1 << 20),
-        RxRUNT_V3 = (1 << 19),
-        RxCRC_V3 = (1 << 17),
+    RxRWT_V3 = (1 << 18),
+    RxRES_V3 = (1 << 20),
+    RxRUNT_V3 = (1 << 19),
+    RxCRC_V3 = (1 << 17),
 
-        RxRES_V4 = (1 << 22),
-        RxRUNT_V4 = (1 << 21),
-        RxCRC_V4 = (1 << 20),
+    RxRES_V4 = (1 << 22),
+    RxRUNT_V4 = (1 << 21),
+    RxCRC_V4 = (1 << 20),
 
-        /* ChipCmdBits */
-        StopReq  = 0x80,
-        CmdReset = 0x10,
-        CmdRxEnb = 0x08,
-        CmdTxEnb = 0x04,
-        RxBufEmpty = 0x01,
+    /* ChipCmdBits */
+    StopReq  = 0x80,
+    CmdReset = 0x10,
+    CmdRxEnb = 0x08,
+    CmdTxEnb = 0x04,
+    RxBufEmpty = 0x01,
 
-        /* Cfg9346Bits */
-        Cfg9346_EEM_MASK = 0xC0,
-        Cfg9346_Lock = 0x00,
-        Cfg9346_Unlock = 0xC0,
-        Cfg9346_EEDO = (1 << 0),
-        Cfg9346_EEDI = (1 << 1),
-        Cfg9346_EESK = (1 << 2),
-        Cfg9346_EECS = (1 << 3),
-        Cfg9346_EEM0 = (1 << 6),
-        Cfg9346_EEM1 = (1 << 7),
+    /* Cfg9346Bits */
+    Cfg9346_EEM_MASK = 0xC0,
+    Cfg9346_Lock = 0x00,
+    Cfg9346_Unlock = 0xC0,
+    Cfg9346_EEDO = (1 << 0),
+    Cfg9346_EEDI = (1 << 1),
+    Cfg9346_EESK = (1 << 2),
+    Cfg9346_EECS = (1 << 3),
+    Cfg9346_EEM0 = (1 << 6),
+    Cfg9346_EEM1 = (1 << 7),
 
-        /* rx_mode_bits */
-        AcceptErr = 0x20,
-        AcceptRunt = 0x10,
-        AcceptBroadcast = 0x08,
-        AcceptMulticast = 0x04,
-        AcceptMyPhys = 0x02,
-        AcceptAllPhys = 0x01,
-        AcceppVlanPhys = 0x8000,
+    /* rx_mode_bits */
+    AcceptErr = 0x20,
+    AcceptRunt = 0x10,
+    AcceptBroadcast = 0x08,
+    AcceptMulticast = 0x04,
+    AcceptMyPhys = 0x02,
+    AcceptAllPhys = 0x01,
+    AcceppVlanPhys = 0x8000,
 
-        /* Transmit Priority Polling*/
-        HPQ = 0x80,
-        NPQ = 0x40,
-        FSWInt = 0x01,
+    /* Transmit Priority Polling*/
+    HPQ = 0x80,
+    NPQ = 0x40,
+    FSWInt = 0x01,
 
-        /* RxConfigBits */
-        Reserved2_shift = 13,
-        RxCfgDMAShift = 8,
-        EnableRxDescV3 = (1 << 24),
-        EnableRxDescV4_1 = (1 << 24),
-        EnableOuterVlan = (1 << 23),
-        EnableInnerVlan = (1 << 22),
-        RxCfg_128_int_en = (1 << 15),
-        RxCfg_fet_multi_en = (1 << 14),
-        RxCfg_half_refetch = (1 << 13),
-        RxCfg_pause_slot_en = (1 << 11),
-        RxCfg_9356SEL = (1 << 6),
-        EnableRxDescV4_0 = (1 << 1), //not in rcr
+    /* RxConfigBits */
+    Reserved2_shift = 13,
+    RxCfgDMAShift = 8,
+    EnableRxDescV3 = (1 << 24),
+    EnableRxDescV4_1 = (1 << 24),
+    EnableOuterVlan = (1 << 23),
+    EnableInnerVlan = (1 << 22),
+    RxCfg_128_int_en = (1 << 15),
+    RxCfg_fet_multi_en = (1 << 14),
+    RxCfg_half_refetch = (1 << 13),
+    RxCfg_pause_slot_en = (1 << 11),
+    RxCfg_9356SEL = (1 << 6),
+    EnableRxDescV4_0 = (1 << 1), //not in rcr
 
-        /* TxConfigBits */
-        TxInterFrameGapShift = 24,
-        TxDMAShift = 8, /* DMA burst value (0-7) is shift this many bits */
-        TxMACLoopBack = (1 << 17),  /* MAC loopback */
+    /* TxConfigBits */
+    TxInterFrameGapShift = 24,
+    TxDMAShift = 8, /* DMA burst value (0-7) is shift this many bits */
+    TxMACLoopBack = (1 << 17),  /* MAC loopback */
 
-        /* Config1 register */
-        LEDS1       = (1 << 7),
-        LEDS0       = (1 << 6),
-        Speed_down  = (1 << 4),
-        MEMMAP      = (1 << 3),
-        IOMAP       = (1 << 2),
-        VPD         = (1 << 1),
-        PMEnable    = (1 << 0), /* Power Management Enable */
+    /* Config1 register */
+    LEDS1       = (1 << 7),
+    LEDS0       = (1 << 6),
+    Speed_down  = (1 << 4),
+    MEMMAP      = (1 << 3),
+    IOMAP       = (1 << 2),
+    VPD         = (1 << 1),
+    PMEnable    = (1 << 0), /* Power Management Enable */
 
-        /* Config2 register */
-        PMSTS_En    = (1 << 5),
+    /* Config2 register */
+    PMSTS_En    = (1 << 5),
 
-        /* Config3 register */
-        Isolate_en  = (1 << 12), /* Isolate enable */
-        MagicPacket = (1 << 5), /* Wake up when receives a Magic Packet */
-        LinkUp      = (1 << 4), /* This bit is reserved in RTL8125B.*/
-        /* Wake up when the cable connection is re-established */
-        ECRCEN      = (1 << 3), /* This bit is reserved in RTL8125B*/
-        Jumbo_En0   = (1 << 2), /* This bit is reserved in RTL8125B*/
-        RDY_TO_L23  = (1 << 1), /* This bit is reserved in RTL8125B*/
-        Beacon_en   = (1 << 0), /* This bit is reserved in RTL8125B*/
+    /* Config3 register */
+    Isolate_en  = (1 << 12), /* Isolate enable */
+    MagicPacket = (1 << 5), /* Wake up when receives a Magic Packet */
+    LinkUp      = (1 << 4), /* This bit is reserved in RTL8125B.*/
+    /* Wake up when the cable connection is re-established */
+    ECRCEN      = (1 << 3), /* This bit is reserved in RTL8125B*/
+    Jumbo_En0   = (1 << 2), /* This bit is reserved in RTL8125B*/
+    RDY_TO_L23  = (1 << 1), /* This bit is reserved in RTL8125B*/
+    Beacon_en   = (1 << 0), /* This bit is reserved in RTL8125B*/
 
-        /* Config4 register */
-        Jumbo_En1   = (1 << 1), /* This bit is reserved in RTL8125B*/
+    /* Config4 register */
+    Jumbo_En1   = (1 << 1), /* This bit is reserved in RTL8125B*/
 
-        /* Config5 register */
-        BWF     = (1 << 6), /* Accept Broadcast wakeup frame */
-        MWF     = (1 << 5), /* Accept Multicast wakeup frame */
-        UWF     = (1 << 4), /* Accept Unicast wakeup frame */
-        LanWake     = (1 << 1), /* LanWake enable/disable */
-        PMEStatus   = (1 << 0), /* PME status can be reset by PCI RST# */
+    /* Config5 register */
+    BWF     = (1 << 6), /* Accept Broadcast wakeup frame */
+    MWF     = (1 << 5), /* Accept Multicast wakeup frame */
+    UWF     = (1 << 4), /* Accept Unicast wakeup frame */
+    LanWake     = (1 << 1), /* LanWake enable/disable */
+    PMEStatus   = (1 << 0), /* PME status can be reset by PCI RST# */
 
-        /* CPlusCmd */
-        EnableBist  = (1 << 15),
-        Macdbgo_oe  = (1 << 14),
-        Normal_mode = (1 << 13),
-        Force_halfdup   = (1 << 12),
-        Force_rxflow_en = (1 << 11),
-        Force_txflow_en = (1 << 10),
-        Cxpl_dbg_sel    = (1 << 9),//This bit is reserved in RTL8125B
-        ASF     = (1 << 8),//This bit is reserved in RTL8125C
-        PktCntrDisable  = (1 << 7),
-        RxVlan      = (1 << 6),
-        RxChkSum    = (1 << 5),
-        Macdbgo_sel = 0x001C,
-        INTT_0      = 0x0000,
-        INTT_1      = 0x0001,
-        INTT_2      = 0x0002,
-        INTT_3      = 0x0003,
+    /* CPlusCmd */
+    EnableBist  = (1 << 15),
+    Macdbgo_oe  = (1 << 14),
+    Normal_mode = (1 << 13),
+    Force_halfdup   = (1 << 12),
+    Force_rxflow_en = (1 << 11),
+    Force_txflow_en = (1 << 10),
+    Cxpl_dbg_sel    = (1 << 9),//This bit is reserved in RTL8125B
+    ASF     = (1 << 8),//This bit is reserved in RTL8125C
+    PktCntrDisable  = (1 << 7),
+    RxVlan      = (1 << 6),
+    RxChkSum    = (1 << 5),
+    Macdbgo_sel = 0x001C,
+    INTT_0      = 0x0000,
+    INTT_1      = 0x0001,
+    INTT_2      = 0x0002,
+    INTT_3      = 0x0003,
 
-        /* rtl8125_PHYstatus */
-        PowerSaveStatus = 0x80,
-        _1000bpsL = 0x80000,
-        _5000bpsF = 0x1000,
-        _2500bpsF = 0x400,
-        _2500bpsL = 0x200,
-        TxFlowCtrl = 0x40,
-        RxFlowCtrl = 0x20,
-        _1000bpsF = 0x10,
-        _100bps = 0x08,
-        _10bps = 0x04,
-        LinkStatus = 0x02,
-        FullDup = 0x01,
+    /* rtl8125_PHYstatus */
+    PowerSaveStatus = 0x80,
+    _1000bpsL = 0x80000,
+    _5000bpsF = 0x1000,
+    _5000bpsL = 0x800,
+    _2500bpsF = 0x400,
+    _2500bpsL = 0x200,
+    TxFlowCtrl = 0x40,
+    RxFlowCtrl = 0x20,
+    _1000bpsF = 0x10,
+    _100bps = 0x08,
+    _10bps = 0x04,
+    LinkStatus = 0x02,
+    FullDup = 0x01,
 
-        /* DBG_reg */
-        Fix_Nak_1 = (1 << 4),
-        Fix_Nak_2 = (1 << 3),
-        DBGPIN_E2 = (1 << 0),
+    /* DBG_reg */
+    Fix_Nak_1 = (1 << 4),
+    Fix_Nak_2 = (1 << 3),
+    DBGPIN_E2 = (1 << 0),
 
-        /* ResetCounterCommand */
-        CounterReset = 0x1,
-        /* DumpCounterCommand */
-        CounterDump = 0x8,
+    /* ResetCounterCommand */
+    CounterReset = 0x1,
+    /* DumpCounterCommand */
+    CounterDump = 0x8,
 
-        /* PHY access */
-        PHYAR_Flag = 0x80000000,
-        PHYAR_Write = 0x80000000,
-        PHYAR_Read = 0x00000000,
-        PHYAR_Reg_Mask = 0x1f,
-        PHYAR_Reg_shift = 16,
-        PHYAR_Data_Mask = 0xffff,
+    /* PHY access */
+    PHYAR_Flag = 0x80000000,
+    PHYAR_Write = 0x80000000,
+    PHYAR_Read = 0x00000000,
+    PHYAR_Reg_Mask = 0x1f,
+    PHYAR_Reg_shift = 16,
+    PHYAR_Data_Mask = 0xffff,
 
-        /* EPHY access */
-        EPHYAR_Flag = 0x80000000,
-        EPHYAR_Write = 0x80000000,
-        EPHYAR_Read = 0x00000000,
-        EPHYAR_Reg_Mask = 0x3f,
-        EPHYAR_Reg_Mask_v2 = 0x7f,
-        EPHYAR_Reg_shift = 16,
-        EPHYAR_Data_Mask = 0xffff,
+    /* EPHY access */
+    EPHYAR_Flag = 0x80000000,
+    EPHYAR_Write = 0x80000000,
+    EPHYAR_Read = 0x00000000,
+    EPHYAR_Reg_Mask = 0x3f,
+    EPHYAR_Reg_Mask_v2 = 0x7f,
+    EPHYAR_Reg_shift = 16,
+    EPHYAR_Data_Mask = 0xffff,
 
-        /* CSI access */
-        CSIAR_Flag = 0x80000000,
-        CSIAR_Write = 0x80000000,
-        CSIAR_Read = 0x00000000,
-        CSIAR_ByteEn = 0x0f,
-        CSIAR_ByteEn_shift = 12,
-        CSIAR_Addr_Mask = 0x0fff,
+    /* CSI access */
+    CSIAR_Flag = 0x80000000,
+    CSIAR_Write = 0x80000000,
+    CSIAR_Read = 0x00000000,
+    CSIAR_ByteEn = 0x0f,
+    CSIAR_ByteEn_shift = 12,
+    CSIAR_Addr_Mask = 0x0fff,
 
-        /* ERI access */
-        ERIAR_Flag = 0x80000000,
-        ERIAR_Write = 0x80000000,
-        ERIAR_Read = 0x00000000,
-        ERIAR_Addr_Align = 4, /* ERI access register address must be 4 byte alignment */
-        ERIAR_ExGMAC = 0,
-        ERIAR_MSIX = 1,
-        ERIAR_ASF = 2,
-        ERIAR_OOB = 2,
-        ERIAR_Type_shift = 16,
-        ERIAR_ByteEn = 0x0f,
-        ERIAR_ByteEn_shift = 12,
+    /* ERI access */
+    ERIAR_Flag = 0x80000000,
+    ERIAR_Write = 0x80000000,
+    ERIAR_Read = 0x00000000,
+    ERIAR_Addr_Align = 4, /* ERI access register address must be 4 byte alignment */
+    ERIAR_ExGMAC = 0,
+    ERIAR_MSIX = 1,
+    ERIAR_ASF = 2,
+    ERIAR_OOB = 2,
+    ERIAR_Type_shift = 16,
+    ERIAR_ByteEn = 0x0f,
+    ERIAR_ByteEn_shift = 12,
 
-        /* OCP GPHY access */
-        OCPDR_Write = 0x80000000,
-        OCPDR_Read = 0x00000000,
-        OCPDR_Reg_Mask = 0xFF,
-        OCPDR_Data_Mask = 0xFFFF,
-        OCPDR_GPHY_Reg_shift = 16,
-        OCPAR_Flag = 0x80000000,
-        OCPAR_GPHY_Write = 0x8000F060,
-        OCPAR_GPHY_Read = 0x0000F060,
-        OCPR_Write = 0x80000000,
-        OCPR_Read = 0x00000000,
-        OCPR_Addr_Reg_shift = 16,
-        OCPR_Flag = 0x80000000,
-        OCP_STD_PHY_BASE_PAGE = 0x0A40,
+    /* OCP GPHY access */
+    OCPDR_Write = 0x80000000,
+    OCPDR_Read = 0x00000000,
+    OCPDR_Reg_Mask = 0xFF,
+    OCPDR_Data_Mask = 0xFFFF,
+    OCPDR_GPHY_Reg_shift = 16,
+    OCPAR_Flag = 0x80000000,
+    OCPAR_GPHY_Write = 0x8000F060,
+    OCPAR_GPHY_Read = 0x0000F060,
+    OCPR_Write = 0x80000000,
+    OCPR_Read = 0x00000000,
+    OCPR_Addr_Reg_shift = 16,
+    OCPR_Flag = 0x80000000,
+    OCP_STD_PHY_BASE_PAGE = 0x0A40,
 
-        /* MCU Command */
-        Now_is_oob = (1 << 7),
-        Txfifo_empty = (1 << 5),
-        Rxfifo_empty = (1 << 4),
+    /* MCU Command */
+    Now_is_oob = (1 << 7),
+    Txfifo_empty = (1 << 5),
+    Rxfifo_empty = (1 << 4),
 
-        /* E-FUSE access */
-        EFUSE_WRITE = 0x80000000,
-        EFUSE_WRITE_OK  = 0x00000000,
-        EFUSE_READ  = 0x00000000,
-        EFUSE_READ_OK   = 0x80000000,
-        EFUSE_WRITE_V3 = 0x40000000,
-        EFUSE_WRITE_OK_V3  = 0x00000000,
-        EFUSE_READ_V3  = 0x80000000,
-        EFUSE_READ_OK_V3   = 0x00000000,
-        EFUSE_Reg_Mask  = 0x03FF,
-        EFUSE_Reg_Shift = 8,
-        EFUSE_Check_Cnt = 300,
-        EFUSE_READ_FAIL = 0xFF,
-        EFUSE_Data_Mask = 0x000000FF,
+    /* E-FUSE access */
+    EFUSE_WRITE = 0x80000000,
+    EFUSE_WRITE_OK  = 0x00000000,
+    EFUSE_READ  = 0x00000000,
+    EFUSE_READ_OK   = 0x80000000,
+    EFUSE_WRITE_V3 = 0x40000000,
+    EFUSE_WRITE_OK_V3  = 0x00000000,
+    EFUSE_READ_V3  = 0x80000000,
+    EFUSE_READ_OK_V3   = 0x00000000,
+    EFUSE_Reg_Mask  = 0x03FF,
+    EFUSE_Reg_Shift = 8,
+    EFUSE_Check_Cnt = 300,
+    EFUSE_READ_FAIL = 0xFF,
+    EFUSE_Data_Mask = 0x000000FF,
 
-        /* GPIO */
-        GPIO_en = (1 << 0),
+    /* GPIO */
+    GPIO_en = (1 << 0),
 
-        /* PTP */
-        PTP_ISR_TOK = (1 << 1),
-        PTP_ISR_TER = (1 << 2),
-        PTP_EXEC_CMD = (1 << 7),
-        PTP_ADJUST_TIME_NS_NEGATIVE = (1 << 30),
-        PTP_ADJUST_TIME_S_NEGATIVE = (1ULL << 48),
-        PTP_SOFT_CONFIG_TIME_NS_NEGATIVE = (1 << 30),
-        PTP_SOFT_CONFIG_TIME_S_NEGATIVE = (1ULL << 48),
+    /* PTP */
+    PTP_ISR_TOK = (1 << 1),
+    PTP_ISR_TER = (1 << 2),
+    PTP_EXEC_CMD = (1 << 7),
+    PTP_ADJUST_TIME_NS_NEGATIVE = (1 << 30),
+    PTP_ADJUST_TIME_S_NEGATIVE = (1ULL << 48),
+    PTP_SOFT_CONFIG_TIME_NS_NEGATIVE = (1 << 30),
+    PTP_SOFT_CONFIG_TIME_S_NEGATIVE = (1ULL << 48),
 
-        /* New Interrupt Bits */
-        INT_CFG0_ENABLE_8125 = (1 << 0),
-        INT_CFG0_TIMEOUT0_BYPASS_8125 = (1 << 1),
-        INT_CFG0_MITIGATION_BYPASS_8125 = (1 << 2),
-        INT_CFG0_RDU_BYPASS_8126 = (1 << 4),
-        INT_CFG0_MSIX_ENTRY_NUM_MODE = (1 << 5),
-        INT_CFG0_AUTO_CLEAR_IMR = (1 << 5),
-        INT_CFG0_AVOID_MISS_INTR = (1 << 6),
-        ISRIMR_V2_ROK_Q0     = (1 << 0),
-        ISRIMR_TOK_Q0        = (1 << 16),
-        ISRIMR_TOK_Q1        = (1 << 18),
-        ISRIMR_V2_LINKCHG    = (1 << 21),
+    /* New Interrupt Bits */
+    INT_CFG0_ENABLE_8125 = (1 << 0),
+    INT_CFG0_TIMEOUT0_BYPASS_8125 = (1 << 1),
+    INT_CFG0_MITIGATION_BYPASS_8125 = (1 << 2),
+    INT_CFG0_RDU_BYPASS_8126 = (1 << 4),
+    INT_CFG0_MSIX_ENTRY_NUM_MODE = (1 << 5),
+    INT_CFG0_AUTO_CLEAR_IMR = (1 << 5),
+    INT_CFG0_AVOID_MISS_INTR = (1 << 6),
+    ISRIMR_V2_ROK_Q0     = (1 << 0),
+    ISRIMR_TOK_Q0        = (1 << 16),
+    ISRIMR_TOK_Q1        = (1 << 18),
+    ISRIMR_V2_LINKCHG    = (1 << 21),
 
-        ISRIMR_V4_ROK_Q0     = (1 << 0),
-        ISRIMR_V4_LINKCHG    = (1 << 29),
-        ISRIMR_V4_LAYER2_INTR_STS = (1 << 31),
-        ISRIMR_V4_L2_IPC2    = (1 << 17),
+    ISRIMR_V4_ROK_Q0     = (1 << 0),
+    ISRIMR_V4_LINKCHG    = (1 << 29),
+    ISRIMR_V4_LAYER2_INTR_STS = (1 << 31),
+    ISRIMR_V4_L2_IPC2    = (1 << 17),
 
-        ISRIMR_V5_ROK_Q0     = (1 << 0),
-        ISRIMR_V5_TOK_Q0     = (1 << 16),
-        ISRIMR_V5_TOK_Q1     = (1 << 17),
-        ISRIMR_V5_LINKCHG    = (1 << 18),
+    ISRIMR_V5_ROK_Q0     = (1 << 0),
+    ISRIMR_V5_TOK_Q0     = (1 << 16),
+    ISRIMR_V5_TOK_Q1     = (1 << 17),
+    ISRIMR_V5_LINKCHG    = (1 << 18),
 
-        ISRIMR_V7_ROK_Q0     = (1 << 0),
-        ISRIMR_V7_TOK_Q0     = (1 << 27),
-        ISRIMR_V7_TOK_Q1     = (1 << 28),
-        ISRIMR_V7_LINKCHG    = (1 << 29),
+    ISRIMR_V7_ROK_Q0     = (1 << 0),
+    ISRIMR_V7_TOK_Q0     = (1 << 27),
+    ISRIMR_V7_TOK_Q1     = (1 << 28),
+    ISRIMR_V7_LINKCHG    = (1 << 29),
 
-        /* IPC2 */
-        RISC_IPC2_INTR    = (1 << 1),
+    /* IPC2 */
+    RISC_IPC2_INTR    = (1 << 1),
 
-        /* Magic Number */
-        RTL8125_MAGIC_NUMBER = 0x0badbadbadbadbadull,
+    /* AVB */
+    AVB_MODE_ENABLE      = (1 << 0),
+    DVLAN_MODE_ENABLE    = (1 << 1),
+
+    /* Magic Number */
+    RTL8125_MAGIC_NUMBER = 0x0badbadbadbadbadull,
 };
 
 enum _DescStatusBit {
@@ -995,6 +1001,9 @@ struct rtl8125_private {
 #define NIC_RAMCODE_VERSION_CFG_METHOD_10 (0x0027)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_11 (0x0031)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_12 (0x0010)
+#define NIC_RAMCODE_VERSION_CFG_METHOD_31 (0x0023)
+#define NIC_RAMCODE_VERSION_CFG_METHOD_32 (0x0033)
+#define NIC_RAMCODE_VERSION_CFG_METHOD_33 (0x0060)
 
 //hwoptimize
 #define HW_PATCH_SOC_LAN (BIT_0)
@@ -1013,7 +1022,9 @@ static const u16 other_q_intr_mask = (RxOK1 | RxDU1);
 #define RTL_R16(tp, reg)        OSReadLittleInt16((tp)->mmio_addr, (reg))
 #define RTL_R32(tp, reg)        OSReadLittleInt32((tp)->mmio_addr, (reg))
 
-#define ADV_
+#define RTK_ADVERTISED_5000baseX_Full  BIT_ULL(48)
+#define RTK_SUPPORTED_5000baseX_Full BIT_ULL(48)
+
 #define RTK_ADVERTISE_2500FULL  0x80
 #define RTK_ADVERTISE_5000FULL  0x100
 #define RTK_ADVERTISE_10000FULL  0x1000
@@ -1040,7 +1051,7 @@ static const u16 other_q_intr_mask = (RxOK1 | RxDU1);
 
 #ifdef __cplusplus
 extern "C" {
-    bool rtl812x_aspm_is_safe(struct rtl8125_private *tp);
+    bool rtl8125_aspm_is_safe(struct rtl8125_private *tp);
     bool rtl8125_is_speed_mode_valid(u32 speed);
 
     void rtl8125_gset_xmii(struct rtl8125_private *tp, struct ethtool_link_ksettings *cmd);
@@ -1053,11 +1064,10 @@ extern "C" {
 
     void rtl8125_nic_reset(struct rtl8125_private *tp);
     void rtl8125_hw_reset(struct rtl8125_private *tp);
-    void rtl8125_hw_config(struct rtl8125_private *tp);
     void rtl8125_powerup_pll(struct rtl8125_private *tp);
     void rtl8125_powerdown_pll(struct rtl8125_private *tp);
 
-    void rtl812x_rar_set(struct rtl8125_private *tp, const u8 *addr);
+    void rtl8125_rar_set(struct rtl8125_private *tp, const u8 *addr);
     void rtl8125_disable_rx_packet_filter(struct rtl8125_private *tp);
     void rtl8125_enable_cfg9346_write(struct rtl8125_private *tp);
     void rtl8125_disable_cfg9346_write(struct rtl8125_private *tp);
@@ -1075,6 +1085,7 @@ extern "C" {
     void rtl8125_set_mac_ocp_bit(struct rtl8125_private *tp, u16 addr, u16 mask);
     void rtl8125_enable_tcam(struct rtl8125_private *tp);
     void rtl8125_set_l1_l0s_entry_latency(struct rtl8125_private *tp);
+    void rtl8126_disable_l1_timeout(struct rtl8125_private *tp);
     void rtl8125_enable_mcu(struct rtl8125_private *tp, bool enable);
     void rtl8125_oob_mutex_lock(struct rtl8125_private *tp);;
     void rtl8125_oob_mutex_unlock(struct rtl8125_private *tp);;
@@ -1128,7 +1139,7 @@ extern "C" {
     void linkmode_set_bit(unsigned int nbit, unsigned int *dst);
 }
 #else
-bool rtl812x_aspm_is_safe(struct rtl8125_private *tp);
+bool rtl8125_aspm_is_safe(struct rtl8125_private *tp);
 bool rtl8125_is_speed_mode_valid(u32 speed);
 
 void rtl8125_gset_xmii(struct rtl8125_private *tp, struct ethtool_link_ksettings *cmd);
@@ -1141,11 +1152,10 @@ void rtl8125_exit_oob(struct rtl8125_private *tp);
 
 void rtl8125_nic_reset(struct rtl8125_private *tp);
 void rtl8125_hw_reset(struct rtl8125_private *tp);
-void rtl8125_hw_config(struct rtl8125_private *tp);
 void rtl8125_powerup_pll(struct rtl8125_private *tp);
 void rtl8125_powerdown_pll(struct rtl8125_private *tp);
 
-void rtl812x_rar_set(struct rtl8125_private *tp, const u8 *addr);
+void rtl8125_rar_set(struct rtl8125_private *tp, const u8 *addr);
 void rtl8125_disable_rx_packet_filter(struct rtl8125_private *tp);
 void rtl8125_enable_cfg9346_write(struct rtl8125_private *tp);
 void rtl8125_disable_cfg9346_write(struct rtl8125_private *tp);
@@ -1163,6 +1173,7 @@ u32 mac_mcu_read(struct rtl8125_private *tp, u16 reg);
 void rtl8125_set_mac_ocp_bit(struct rtl8125_private *tp, u16 addr, u16 mask);
 void rtl8125_enable_tcam(struct rtl8125_private *tp);
 void rtl8125_set_l1_l0s_entry_latency(struct rtl8125_private *tp);
+void rtl8126_disable_l1_timeout(struct rtl8125_private *tp);
 void rtl8125_enable_mcu(struct rtl8125_private *tp, bool enable);
 void rtl8125_oob_mutex_lock(struct rtl8125_private *tp);;
 void rtl8125_oob_mutex_unlock(struct rtl8125_private *tp);;

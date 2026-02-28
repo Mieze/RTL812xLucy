@@ -149,6 +149,11 @@ test_mask(unsigned int mask, const volatile unsigned int *addr)
     return ((mask & *addr) == mask);
 }
 
+static inline void set_mask(unsigned int mask, volatile unsigned int *addr)
+{
+    OSBitOrAtomic(mask, (volatile UInt32 *)addr);
+}
+
 static inline void clear_mask(unsigned int mask, const volatile unsigned int *addr)
 {
     OSBitAndAtomic(~mask, (volatile UInt32 *)addr);

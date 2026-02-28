@@ -23,7 +23,7 @@
 static const char *onName = "enabled";
 static const char *offName = "disabled";
 
-#define ADV_ALL (ADVERTISED_10baseT_Half | ADVERTISED_10baseT_Full | ADVERTISED_100baseT_Half | ADVERTISED_100baseT_Full | ADVERTISED_1000baseT_Full | ADVERTISED_2500baseX_Full)
+#define ADV_ALL (ADVERTISED_10baseT_Half | ADVERTISED_10baseT_Full | ADVERTISED_100baseT_Half | ADVERTISED_100baseT_Full | ADVERTISED_1000baseT_Full)
 
 struct rtlMediumTable mediumArray[MIDX_COUNT] = {
     { .type = kIOMediumEthernetAuto, .spd = 0, .idx = MIDX_AUTO, .speed = 0, .duplex = DUPLEX_FULL, .fc = rtl8125_fc_none, .eee = kEEETypeNo, .adv = ADV_ALL },
@@ -52,10 +52,10 @@ struct rtlMediumTable mediumArray[MIDX_COUNT] = {
     { .type = (kIOMediumEthernet2500BaseT | IFM_FDX | IFM_FLOW | IFM_EEE), .spd = kSpeed2500MBit, .idx = MIDX_2500FDFC_EEE, .speed = SPEED_2500, .duplex = DUPLEX_FULL, .fc = rtl8125_fc_full, .eee = kEEETypeYes, .adv = ADVERTISED_2500baseX_Full },
     
     /* 5000Base-T */
-    { .type = (kIOMediumEthernet5000BaseT | IFM_FDX), .spd = kSpeed5000MBit, .idx = MIDX_5000FD, .speed = SPEED_5000, .duplex = DUPLEX_FULL, .fc = rtl8125_fc_none, .eee = kEEETypeNo, .adv = 0 },
-    { .type = (kIOMediumEthernet5000BaseT | IFM_FDX | IFM_FLOW), .spd = kSpeed5000MBit, .idx = MIDX_5000FDFC, .speed = SPEED_5000, .duplex = DUPLEX_FULL, .fc = rtl8125_fc_full, .eee = kEEETypeNo, .adv = 0 },
-    { .type = (kIOMediumEthernet5000BaseT | IFM_FDX | IFM_EEE), .spd = kSpeed5000MBit, .idx = MIDX_5000FD_EEE, .speed = SPEED_5000, .duplex = DUPLEX_FULL, .fc = rtl8125_fc_none, .eee = kEEETypeYes, .adv = 0 },
-    { .type = (kIOMediumEthernet5000BaseT | IFM_FDX | IFM_FLOW | IFM_EEE), .spd = kSpeed5000MBit, .idx = MIDX_5000FDFC_EEE, .speed = SPEED_5000, .duplex = DUPLEX_FULL, .fc = rtl8125_fc_full, .eee = kEEETypeYes, .adv = 0 },
+    { .type = (kIOMediumEthernet5000BaseT | IFM_FDX), .spd = kSpeed5000MBit, .idx = MIDX_5000FD, .speed = SPEED_5000, .duplex = DUPLEX_FULL, .fc = rtl8125_fc_none, .eee = kEEETypeNo, .adv = RTK_ADVERTISED_5000baseX_Full },
+    { .type = (kIOMediumEthernet5000BaseT | IFM_FDX | IFM_FLOW), .spd = kSpeed5000MBit, .idx = MIDX_5000FDFC, .speed = SPEED_5000, .duplex = DUPLEX_FULL, .fc = rtl8125_fc_full, .eee = kEEETypeNo, .adv = RTK_ADVERTISED_5000baseX_Full },
+    { .type = (kIOMediumEthernet5000BaseT | IFM_FDX | IFM_EEE), .spd = kSpeed5000MBit, .idx = MIDX_5000FD_EEE, .speed = SPEED_5000, .duplex = DUPLEX_FULL, .fc = rtl8125_fc_none, .eee = kEEETypeYes, .adv = RTK_ADVERTISED_5000baseX_Full },
+    { .type = (kIOMediumEthernet5000BaseT | IFM_FDX | IFM_FLOW | IFM_EEE), .spd = kSpeed5000MBit, .idx = MIDX_5000FDFC_EEE, .speed = SPEED_5000, .duplex = DUPLEX_FULL, .fc = rtl8125_fc_full, .eee = kEEETypeYes, .adv = RTK_ADVERTISED_5000baseX_Full },
     
     /* 10GBase-T */
     { .type = (kIOMediumEthernet10GBaseT | IFM_FDX), .spd = kSpeed10000MBit, .idx = MIDX_10000FD, .speed = SPEED_10000, .duplex = DUPLEX_FULL, .fc = rtl8125_fc_none, .eee = kEEETypeNo, .adv = 0 },
@@ -195,13 +195,15 @@ bool RTL8125::setupMediumDict()
     UInt32 i;
     bool result = false;
 
-    if (HW_SUPP_PHY_LINK_SPEED_5000M(tp))
+    if (HW_SUPP_PHY_LINK_SPEED_5000M(tp)) {
+        mediumArray[MIDX_AUTO].adv |= (ADVERTISED_2500baseX_Full | RTK_ADVERTISED_5000baseX_Full);
         limit = MIDX_10000FD;
-    else if (HW_SUPP_PHY_LINK_SPEED_2500M(tp))
+    } else if (HW_SUPP_PHY_LINK_SPEED_2500M(tp)) {
+        mediumArray[MIDX_AUTO].adv |= ADVERTISED_2500baseX_Full;
         limit = (tp->mcfg < CFG_METHOD_4) ? MIDX_2500FD_EEE : MIDX_5000FD;
-    else
+    } else {
         limit = MIDX_2500FD;
-    
+    }
     mediumDict = OSDictionary::withCapacity(limit + 1);
 
     if (mediumDict) {
@@ -500,7 +502,7 @@ bool RTL8125::setupTxResources()
         if (!result)
             goto error_segm;
     } else {
-        txMbufCursor = IOMbufNaturalMemoryCursor::withSpecification(0x4000, kMaxSegs);
+        txMbufCursor = IOMbufNaturalMemoryCursor::withSpecification(PAGE_SIZE, kMaxSegs);
         
         if (!txMbufCursor) {
             IOLog("Couldn't create txMbufCursor.\n");

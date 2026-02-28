@@ -197,16 +197,13 @@ void RTL8125::interruptOccurredVTD(OSObject *client, IOInterruptEventSource *src
             etherStats->dot3TxExtraEntry.interrupts++;
         }
         if (status & (TxOK | RxOK | PCSTimeout))
-            timerValue = updateTimerValue(tp, status);
+            timerValue = updateIntrMode(tp, status);
         
         RTL_W32(tp, TIMER_INT0_8125, timerValue);
 
-        if (timerValue) {
+        if (timerValue)
             RTL_W32(tp, TCTR0_8125, timerValue);
-            intrMask = intrMaskTimer;
-        } else {
-            intrMask = intrMaskRxTx;
-        }
+        
         clear_bit(__POLLING, &stateFlags);
     }
     if (status & LinkChg) {

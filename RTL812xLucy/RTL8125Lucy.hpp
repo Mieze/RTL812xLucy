@@ -198,8 +198,8 @@ typedef struct RtlStatData {
 #define kMaxSegs 32
 
 /* The number of descriptors must be a power of 2. */
-#define kNumTxDesc    512   /* Number of Tx descriptors */
-#define kNumRxDesc    512    /* Number of Rx descriptors */
+#define kNumTxDesc    1024  /* Number of Tx descriptors */
+#define kNumRxDesc    1024  /* Number of Rx descriptors */
 #define kTxLastDesc    (kNumTxDesc - 1)
 #define kRxLastDesc    (kNumRxDesc - 1)
 #define kTxDescMask    (kNumTxDesc - 1)
@@ -233,8 +233,7 @@ typedef struct RtlStatData {
 #define kMaxMtu 9000
 #define kMaxPacketSize (kMaxMtu + ETH_HLEN + VLAN_HLEN + ETH_FCS_LEN)
 
-/* statitics timer period in ms. */
-#define kTimeoutMS 1000
+/* statitics dump delay in ms. */
 #define kStatDelayTime 1000000UL    /* 1ms */
 
 /* RealtekRxPool capacities */
@@ -242,21 +241,22 @@ typedef struct RtlStatData {
 #define kRxPoolMbufCap   50     /* mbufs without clusters */
 
 /* Treshhold value to wake a stalled queue */
-#define kTxQueueWakeTreshhold (kNumTxDesc / 10)
+#define kTxQueueWakeTreshhold (kNumTxDesc / 4)
 #define kMinFreeDescs (kMaxSegs + 2)
 
 /* transmitter deadlock treshhold in seconds. */
 #define kTxDeadlockTreshhold 6
 #define kTxCheckTreshhold (kTxDeadlockTreshhold - 1)
+#define kTimerPeriod    1000000000UL
 
 /* timer value for interrupt throttling */
 #define kTimerDefault   0x2600
-#define kTimerBulk      0x5f00
+#define kTimerBulk      0x5000
+#define kTimer5000      0x4000
 #define kTimerLat1   (kTimerDefault / 2)
 #define kTimerLat2   ((kTimerDefault / 4) * 3)
-#define kTimespan4ms    4000000UL
 
-#define kIPv6HdrLen     sizeof(struct ip6_hdr)
+#define kIPv6HdrLen     ((UInt32)sizeof(struct ip6_hdr))
 #define kIPv4HdrLen     sizeof(struct ip)
 #define kL234HdrLenV6   (sizeof(struct ether_header) + kIPv6HdrLen + sizeof(struct tcphdr))
 #define kL234HdrLenV4   (sizeof(struct ether_header) + kIPv4HdrLen + sizeof(struct tcphdr))
@@ -440,7 +440,7 @@ private:
     bool setupMediumDict();
     bool initEventSources(IOService *provider);
     bool initPCIConfigSpace(IOPCIDevice *provider);
-    void setupASPM(IOPCIDevice *provider, bool allowL1);
+    void setupASPM(IOPCIDevice *provider, bool allowL0s, bool allowL1);
     
     void    interruptOccurred(OSObject *client, IOInterruptEventSource *src, int count);
     UInt32  rxInterrupt(IONetworkInterface *interface, uint32_t maxCount,
@@ -465,8 +465,8 @@ private:
     void setLinkDown();
     bool txHangCheck();
     void getChecksumResult(mbuf_t m, UInt32 status1, UInt32 status2);
-    UInt32 updateTimerValue(struct rtl8125_private *tp, UInt32 status);
-    
+    UInt32 updateIntrMode(struct rtl8125_private *tp, UInt32 status);
+
     /* AppleVTD support methods*/
     bool setupRxMap();
     void freeRxMap();
@@ -534,7 +534,6 @@ private:
     IOPhysicalAddress64 txPhyAddr;
     IODMACommand *txDescDmaCmd;
     struct RtlTxDesc *txDescArray;
-    RTL8125LucyRxPool *rxPool;
     IOMbufNaturalMemoryCursor *txMbufCursor;
     rtlTxBufferInfo *txBufArray;
     void *txBufArrayMem;
@@ -563,6 +562,7 @@ private:
     void *rxBufArrayMem;
     void *rxMapMem;
     rtlRxMapInfo *rxMapInfo;
+    RTL8125LucyRxPool *rxPool;
     UInt64 multicastFilter;
     mbuf_t rxPacketHead;
     mbuf_t rxPacketTail;
@@ -602,10 +602,9 @@ private:
     UInt64 pollTime10G;
     UInt64 pollTime5G;
     UInt64 pollTime2G;
-    UInt64 actualPollTime;
     UInt64 statDelay;
-    UInt64 updatePeriod;
-    
+    UInt64 timerInterval;
+
     UInt64 nextUpdate;
     UInt32 intrMask;
     UInt32 intrMaskRxTx;
