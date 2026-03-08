@@ -620,7 +620,6 @@ private:
     bool enableTSO6;
     bool useAppleVTD;
     bool wolCapable;
-    bool enableGigaLite;
     
 #ifdef DEBUG_INTR
     UInt32 tmrInterrupts;

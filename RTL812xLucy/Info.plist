@@ -31,9 +31,9 @@
 				<key>enableASPM</key>
 				<true/>
 				<key>enableTSO4</key>
-				<false/>
+				<true/>
 				<key>enableTSO6</key>
-				<false/>
+				<true/>
 				<key>µsPollTime10G</key>
 				<integer>100</integer>
 				<key>µsPollTime2G</key>

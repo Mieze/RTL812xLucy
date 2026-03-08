@@ -10074,8 +10074,8 @@ void rtl8125_init_software_variable(struct rtl8125_private *tp, int aspm)
     if (tp->DASH) {
         tp->eee.eee_enabled = 0;
 
-        tp->SizeOfSendToFwBuffer = SEND_TO_FW_BUF_SIZE;
-        tp->SizeOfRecvFromFwBuffer = RECV_FROM_FW_BUF_SIZE;
+        //tp->SizeOfSendToFwBuffer = SEND_TO_FW_BUF_SIZE;
+        //tp->SizeOfRecvFromFwBuffer = RECV_FROM_FW_BUF_SIZE;
 
         tp->DashFirmwareVersion = rtl8125_get_dash_fw_ver(tp);
     }

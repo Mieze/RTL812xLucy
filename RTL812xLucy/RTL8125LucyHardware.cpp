@@ -1414,10 +1414,7 @@ void RTL8125::rtl812xSetPhyMedium(struct rtl8125_private *tp, UInt8 autoneg, UIn
         rtl8125_disable_eee(tp);
         DebugLog("Disable EEE support.\n");
     }
-    if (enableGigaLite && (autoneg == AUTONEG_ENABLE))
-        rtl8125_enable_giga_lite(tp, adv);
-    else
-        rtl8125_disable_giga_lite(tp);
+    rtl8125_disable_giga_lite(tp);
 
     giga_ctrl = rtl8125_mdio_read(tp, MII_CTRL1000);
     giga_ctrl &= ~(ADVERTISE_1000HALF | ADVERTISE_1000FULL);

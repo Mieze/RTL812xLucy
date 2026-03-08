@@ -949,8 +949,8 @@ struct rtl8125_private {
     u8 HwPkgDet;
     u8 HwSuppOcpChannelVer;
     u32 DashFirmwareVersion;
-    u32 SizeOfSendToFwBuffer;
-    u32 SizeOfRecvFromFwBuffer;
+    //u32 SizeOfSendToFwBuffer;
+    //u32 SizeOfRecvFromFwBuffer;
     u8 AllowAccessDashOcp;
     DECLARE_BITMAP(dash_req_flags, R8125_DASH_REQ_FLAG_MAX);
 

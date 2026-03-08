@@ -218,7 +218,6 @@ bool RTL8125::init(OSDictionary *properties)
         enableTSO4 = false;
         enableTSO6 = false;
         wolCapable = false;
-        enableGigaLite = false;
         pciPMCtrlOffset = 0;
         pcieCapOffset = 0;
 
