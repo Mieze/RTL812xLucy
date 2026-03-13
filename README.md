@@ -15,6 +15,7 @@ A new macOS driver for the Realtek RTL812x family of 2.5GBit and 5Gbit Ethernet 
   - RTL8125D
   - RTL8126A
 * Support for AppleVTD (Tahoe included), but also works without it.
+* TCP segmentation offload with IPv4 and IPv6.
 * Support for TCP/IPv4, UDP/IPv4, TCP/IPv6 and UDP/IPv6 checksum offload.
 * Supports jumbo frames up to 9000 bytes.
 * Fully optimized for Catalina. Note that older versions of macOS might not support 2.5Gbit and 5Gbit Ethernet.
@@ -25,7 +26,7 @@ A new macOS driver for the Realtek RTL812x family of 2.5GBit and 5Gbit Ethernet 
 **Current Status**
 
 * The driver has been successfully tested with Tahoe, Sequoia and Monterey but should work fine with Catalina and above.
-* Due to performance problems under Tahoe TCP segmentation offload (TSO) is currently disabled but will be added back ASAP. As a result, CPU load is a little bit higher than usal during packet transmission (tx activity).
+* The performance problem when using TCP segmentation offload (TSO) has been fixed in version 1.1.0. TSO is now working at line speed.
 
 **A word on AppleVTD**
 
