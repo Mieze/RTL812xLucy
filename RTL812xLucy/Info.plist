@@ -40,6 +40,8 @@
 				<integer>160</integer>
 				<key>µsPollTime5G</key>
 				<integer>130</integer>
+				<key>fallbackMAC</key>
+				<string></string>
 			</dict>
 			<key>DriverVersion</key>
 			<string>$MODULE_VERSION</string>
@@ -73,6 +75,6 @@
 	<key>OSBundleRequired</key>
 	<string>Network-Root</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © 2025 Laura Müller. All rights reserved.</string>
+	<string>Copyright © 2025-2026 Laura Müller. All rights reserved.</string>
 </dict>
 </plist>

@@ -35,7 +35,6 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		D380EC272F5E1BF3008701BC /* RTL8125Lucy.kext */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RTL8125Lucy.kext; sourceTree = BUILT_PRODUCTS_DIR; };
 		D3DB96F02F1AEADE003A7DC8 /* RTL812xLucy.kext */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RTL812xLucy.kext; sourceTree = BUILT_PRODUCTS_DIR; };
 		D3DB97002F1AF27E003A7DC8 /* libkmod.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libkmod.a; path = MacKernelSDK/Library/x86_64/libkmod.a; sourceTree = "<group>"; };
 		D3DB98542F1B09A8003A7DC8 /* xcode-config.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "xcode-config.png"; sourceTree = "<group>"; };
@@ -1287,13 +1286,6 @@
 			);
 			target = D3DB96EF2F1AEADE003A7DC8 /* RTL812xLucy */;
 		};
-		D380EC2C2F5E1BF3008701BC /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = D380EC262F5E1BF3008701BC /* RTL8125Lucy */;
-		};
 		D3DB97452F1AF5CC003A7DC8 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -1319,19 +1311,11 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		D380EC282F5E1BF3008701BC /* RTL8125Lucy */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (D380EC2C2F5E1BF3008701BC /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = RTL8125Lucy; sourceTree = "<group>"; };
-		D3DB96F22F1AEADE003A7DC8 /* RTL812xLucy */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (D3DB97452F1AF5CC003A7DC8 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {RTL8125Lucy.cpp = sourcecode.cpp.cpp; RTL8125Lucy.hpp = sourcecode.cpp.h; }; explicitFolders = (); path = RTL812xLucy; sourceTree = "<group>"; };
+		D3DB96F22F1AEADE003A7DC8 /* RTL812xLucy */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (D3DB97452F1AF5CC003A7DC8 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = RTL812xLucy; sourceTree = "<group>"; };
 		D3DB97022F1AF2D9003A7DC8 /* Firmware */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (D3128FA82F3E065900A4FF49 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = Firmware; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		D380EC242F5E1BF3008701BC /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		D3DB96ED2F1AEADE003A7DC8 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -1348,7 +1332,6 @@
 			children = (
 				D3DB96F22F1AEADE003A7DC8 /* RTL812xLucy */,
 				D3DB97022F1AF2D9003A7DC8 /* Firmware */,
-				D380EC282F5E1BF3008701BC /* RTL8125Lucy */,
 				D3DB96FF2F1AF24D003A7DC8 /* Frameworks */,
 				D3DB96F12F1AEADE003A7DC8 /* Products */,
 			);
@@ -1358,7 +1341,6 @@
 			isa = PBXGroup;
 			children = (
 				D3DB96F02F1AEADE003A7DC8 /* RTL812xLucy.kext */,
-				D380EC272F5E1BF3008701BC /* RTL8125Lucy.kext */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -3552,13 +3534,6 @@
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
-		D380EC222F5E1BF3008701BC /* Headers */ = {
-			isa = PBXHeadersBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		D3DB96EB2F1AEADE003A7DC8 /* Headers */ = {
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
@@ -3569,29 +3544,6 @@
 /* End PBXHeadersBuildPhase section */
 
 /* Begin PBXNativeTarget section */
-		D380EC262F5E1BF3008701BC /* RTL8125Lucy */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = D380EC2D2F5E1BF3008701BC /* Build configuration list for PBXNativeTarget "RTL8125Lucy" */;
-			buildPhases = (
-				D380EC222F5E1BF3008701BC /* Headers */,
-				D380EC232F5E1BF3008701BC /* Sources */,
-				D380EC242F5E1BF3008701BC /* Frameworks */,
-				D380EC252F5E1BF3008701BC /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				D380EC282F5E1BF3008701BC /* RTL8125Lucy */,
-			);
-			name = RTL8125Lucy;
-			packageProductDependencies = (
-			);
-			productName = RTL8125Lucy;
-			productReference = D380EC272F5E1BF3008701BC /* RTL8125Lucy.kext */;
-			productType = "com.apple.product-type.kernel-extension";
-		};
 		D3DB96EF2F1AEADE003A7DC8 /* RTL812xLucy */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = D3DB96F72F1AEADE003A7DC8 /* Build configuration list for PBXNativeTarget "RTL812xLucy" */;
@@ -3625,9 +3577,6 @@
 				BuildIndependentTargetsInParallel = 1;
 				LastUpgradeCheck = 1620;
 				TargetAttributes = {
-					D380EC262F5E1BF3008701BC = {
-						CreatedOnToolsVersion = 16.2;
-					};
 					D3DB96EF2F1AEADE003A7DC8 = {
 						CreatedOnToolsVersion = 16.2;
 					};
@@ -3653,7 +3602,6 @@
 			projectRoot = "";
 			targets = (
 				D3DB96EF2F1AEADE003A7DC8 /* RTL812xLucy */,
-				D380EC262F5E1BF3008701BC /* RTL8125Lucy */,
 			);
 		};
 /* End PBXProject section */
@@ -3683,13 +3631,6 @@
 /* End PBXReferenceProxy section */
 
 /* Begin PBXResourcesBuildPhase section */
-		D380EC252F5E1BF3008701BC /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		D3DB96EE2F1AEADE003A7DC8 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -3700,13 +3641,6 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		D380EC232F5E1BF3008701BC /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		D3DB96EC2F1AEADE003A7DC8 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -3717,65 +3651,13 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		D380EC2E2F5E1BF3008701BC /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
-				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = NO;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1.0.301;
-				DEVELOPMENT_TEAM = FZX87E5QBD;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = RTL8125Lucy/Info.plist;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				MACOSX_DEPLOYMENT_TARGET = 15.2;
-				MARKETING_VERSION = 1.0.3;
-				MODULE_NAME = com.insanelymac.RTL8125Lucy;
-				MODULE_START = RTL8125Lucy_start;
-				MODULE_STOP = RTL8125Lucy_stop;
-				MODULE_VERSION = 1.0.0d1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.insanelymac.RTL8125Lucy;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				RUN_CLANG_STATIC_ANALYZER = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				WRAPPER_EXTENSION = kext;
-			};
-			name = Debug;
-		};
-		D380EC2F2F5E1BF3008701BC /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
-				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = NO;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1.0.301;
-				DEVELOPMENT_TEAM = FZX87E5QBD;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = RTL8125Lucy/Info.plist;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				MACOSX_DEPLOYMENT_TARGET = 15.2;
-				MARKETING_VERSION = 1.0.3;
-				MODULE_NAME = com.insanelymac.RTL8125Lucy;
-				MODULE_START = RTL8125Lucy_start;
-				MODULE_STOP = RTL8125Lucy_stop;
-				MODULE_VERSION = 1.0.0d1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.insanelymac.RTL8125Lucy;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				RUN_CLANG_STATIC_ANALYZER = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				WRAPPER_EXTENSION = kext;
-			};
-			name = Release;
-		};
 		D3DB96F82F1AEADE003A7DC8 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = NO;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1.0.301;
+				CURRENT_PROJECT_VERSION = 1.1.004;
 				DEVELOPMENT_TEAM = FZX87E5QBD;
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -3786,7 +3668,7 @@
 					"$(PROJECT_DIR)/MacKernelSDK/Library/x86_64",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.15;
-				MARKETING_VERSION = 1.0.3;
+				MARKETING_VERSION = 1.1.0;
 				MODULE_NAME = com.insanelymac.RTL812xLucy;
 				MODULE_START = 0;
 				MODULE_STOP = 0;
@@ -3805,7 +3687,7 @@
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = NO;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1.0.301;
+				CURRENT_PROJECT_VERSION = 1.1.004;
 				DEVELOPMENT_TEAM = FZX87E5QBD;
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -3816,7 +3698,7 @@
 					"$(PROJECT_DIR)/MacKernelSDK/Library/x86_64",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.15;
-				MARKETING_VERSION = 1.0.3;
+				MARKETING_VERSION = 1.1.0;
 				MODULE_NAME = com.insanelymac.RTL812xLucy;
 				MODULE_START = 0;
 				MODULE_STOP = 0;
@@ -3963,15 +3845,6 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		D380EC2D2F5E1BF3008701BC /* Build configuration list for PBXNativeTarget "RTL8125Lucy" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				D380EC2E2F5E1BF3008701BC /* Debug */,
-				D380EC2F2F5E1BF3008701BC /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		D3DB96EA2F1AEADE003A7DC8 /* Build configuration list for PBXProject "RTL812xLucy" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

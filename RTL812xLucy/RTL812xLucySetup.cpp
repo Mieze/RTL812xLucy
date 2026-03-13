@@ -1,6 +1,6 @@
-/* RTL8125Setup.hpp -- RTL812x data structure initialzation methods.
+/* RTL8125Setup.cpp -- RTL8125 data structure initialzation methods.
 *
-* Copyright (c) 2025 Laura Müller <laura-mueller@uni-duesseldorf.de>
+* Copyright (c) 2020 Laura Müller <laura-mueller@uni-duesseldorf.de>
 * All rights reserved.
 *
 * This program is free software; you can redistribute it and/or modify it
@@ -13,12 +13,12 @@
 * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
 * more details.
 *
-* Driver for Realtek RTL812x PCIe 2.5/5/10Gbit Ethernet controllers.
+* Driver for Realtek RTL8125 PCIe 2.5GB ethernet controllers.
 *
- * This driver is based on version 9.016.01 of Realtek's r8125 driver.
+* This driver is based on Realtek's r8125 Linux driver (9.003.04).
 */
 
-#include "RTL8125Lucy.hpp"
+#include "RTL812xLucy.hpp"
 
 static const char *onName = "enabled";
 static const char *offName = "disabled";
@@ -112,9 +112,9 @@ void RTL8125::getParams()
         IOLog("TCP/IPv6 segmentation offload %s.\n", enableTSO6 ? onName : offName);
         
         aspm = OSDynamicCast(OSBoolean, params->getObject(kEnableASPM));
-        enableASPM = (aspm != NULL) ? aspm->getValue() : false;
+        linuxData.aspm = (aspm != NULL) ? aspm->getValue() : false;
         
-        IOLog("Active State Power Management %s.\n", enableASPM ? onName : offName);
+        IOLog("Active State Power Management %s.\n", linuxData.aspm ? onName : offName);
 
         tv = OSDynamicCast(OSNumber, params->getObject(kPollTime10GName));
 
@@ -178,7 +178,7 @@ void RTL8125::getParams()
         /* Use default values in case of missing config data. */
         enableTSO4 = false;
         enableTSO6 = false;
-        enableASPM = false;
+        linuxData.aspm = false;
         pollTime10G = 100000;
         pollTime5G = 120000;
         pollTime2G = 160000;
@@ -282,15 +282,15 @@ bool RTL8125::initEventSources(IOService *provider)
     }
     if (!interruptSource) {
         IOLog("Error: MSI index was not found or MSI interrupt could not be enabled.\n");
-        goto error_intr;
+        goto error1;
     }
     workLoop->addEventSource(interruptSource);
     
-    timerSource = IOTimerEventSource::timerEventSource(this, OSMemberFunctionCast(IOTimerEventSource::Action, this, &RTL8125::timerAction));
+    timerSource = IOTimerEventSource::timerEventSource(this, OSMemberFunctionCast(IOTimerEventSource::Action, this, &RTL8125::timerActionRTL8125));
     
     if (!timerSource) {
         IOLog("Failed to create IOTimerEventSource.\n");
-        goto error_timer;
+        goto error2;
     }
     workLoop->addEventSource(timerSource);
 
@@ -299,11 +299,11 @@ bool RTL8125::initEventSources(IOService *provider)
 done:
     return result;
     
-error_timer:
+error2:
     workLoop->removeEventSource(interruptSource);
     RELEASE(interruptSource);
 
-error_intr:
+error1:
     IOLog("Error initializing event sources.\n");
     txQueue->release();
     txQueue = NULL;
@@ -451,7 +451,7 @@ bool RTL8125::setupTxResources()
         IOLog("Couldn't alloc transmit buffer array.\n");
         goto done;
     }
-    txBufArray = (rtlTxBufferInfo *)txBufArrayMem;
+    txMbufArray = (mbuf_t *)txBufArrayMem;
     
     /* Create transmitter descriptor array. */
     txBufDesc = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(kernel_task, (kIODirectionInOut | kIOMemoryPhysicallyContiguous | kIOMemoryHostPhysicallyContiguous | kIOMapInhibitCache), kTxDescSize, 0xFFFFFFFFFFFFFF00ULL);
@@ -491,10 +491,7 @@ bool RTL8125::setupTxResources()
     
     txNextDescIndex = txDirtyDescIndex = 0;
     txNumFreeDesc = kNumTxDesc;
-    
-#ifdef ENABLE_TX_NO_CLOSE
     txTailPtr0 = txClosePtr0 = 0;
-#endif  /* ENABLE_TX_NO_CLOSE */
 
     if (useAppleVTD) {
         result = setupTxMap();
@@ -529,7 +526,7 @@ error_prep:
 error_buff:
     IOFree(txBufArrayMem, kTxBufArraySize);
     txBufArrayMem = NULL;
-    txBufArray = NULL;
+    txMbufArray = NULL;
     
     goto done;
 }
@@ -661,7 +658,7 @@ void RTL8125::freeTxResources()
     if (txBufArrayMem) {
         IOFree(txBufArrayMem, kTxBufArraySize);
         txBufArrayMem = NULL;
-        txBufArray = NULL;
+        txMbufArray = NULL;
     }
 }
 
@@ -709,18 +706,14 @@ void RTL8125::clearRxTxRings()
     }
     for (i = 0; i < kNumTxDesc; i++) {
         txDescArray[i].opts1 = OSSwapHostToLittleInt32((i != kTxLastDesc) ? 0 : RingEnd);
-        m = txBufArray[i].mbuf;
+        m = txMbufArray[i];
         
         if (m) {
-            mbuf_freem_list(m);
-            txBufArray[i].mbuf = NULL;
-            txBufArray[i].numDescs = 0;
-            txBufArray[i].packetBytes = 0;
+            freePacket(m);
+            txMbufArray[i] = NULL;
         }
     }
-#ifdef ENABLE_TX_NO_CLOSE
     txTailPtr0 = txClosePtr0 = 0;
-#endif  /* ENABLE_TX_NO_CLOSE */
 
     txDirtyDescIndex = txNextDescIndex = 0;
     txNumFreeDesc = kNumTxDesc;

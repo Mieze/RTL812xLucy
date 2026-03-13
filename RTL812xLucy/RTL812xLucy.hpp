@@ -1,6 +1,6 @@
-/* RTL8125.hpp -- RTL812x driver class definition.
+/* RTL812xEthernet.hpp -- RTL8125 driver class definition.
 *
-* Copyright (c) 2025 Laura Müller <laura-mueller@uni-duesseldorf.de>
+* Copyright (c) 2020 Laura Müller <laura-mueller@uni-duesseldorf.de>
 * All rights reserved.
 *
 * This program is free software; you can redistribute it and/or modify it
@@ -13,35 +13,20 @@
 * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
 * more details.
 *
-* Driver for Realtek RTL812x PCIe 2.5/5/10Gbit Ethernet controllers.
+* Driver for Realtek RTL8125 PCIe 2.5GB ethernet controllers.
 *
-* This driver is based on version 9.016.01 of Realtek's r8125 driver.
+* This driver is based on Realtek's r8125 Linux driver (9.003.04).
 */
 
+#include "rtl812xx.h"
+#include "rtl812x_dash.h"
 #include "RTL8125LucyRxPool.hpp"
-#include "rtl812x.h"
 
-#ifdef ENABLE_USE_FIRMWARE_FILE
-#include "rtl812x_firmware.h"
-#endif  /* ENABLE_USE_FIRMWARE_FILE */
-
-struct RtlChipFwInfo {
-    const char *name;
-    const char *fw_name;
-    const unsigned char *fw_data;
-    const unsigned int fw_size;
-};
-
-struct RtlChipInfo {
-    const char *name;
-    const char *speed_name;
-    UInt8 mcfg;
-    UInt32 RCR_Cfg;
-    UInt32 RxConfigMask;    /* Clears the bits supported by this chip */
-    UInt32 jumbo_frame_sz;
-};
-
-#define NUM_CHIPS 16
+#ifdef DEBUG
+#define DebugLog(args...) IOLog(args)
+#else
+#define DebugLog(args...)
+#endif
 
 #define    RELEASE(x)    if(x){(x)->release();(x)=NULL;}
 
@@ -103,6 +88,10 @@ struct rtlMediumTable {
     UInt32          eee;
     UInt64          adv;
 };
+
+#define kMacHdrLen      14
+#define kIPv4HdrLen     20
+#define kIPv6HdrLen     40
 
 enum RtlStateFlags {
     __ENABLED = 0,      /* driver is enabled */
@@ -198,8 +187,8 @@ typedef struct RtlStatData {
 #define kMaxSegs 32
 
 /* The number of descriptors must be a power of 2. */
-#define kNumTxDesc    1024  /* Number of Tx descriptors */
-#define kNumRxDesc    1024  /* Number of Rx descriptors */
+#define kNumTxDesc    1024    /* Number of Tx descriptors */
+#define kNumRxDesc    1024    /* Number of Rx descriptors */
 #define kTxLastDesc    (kNumTxDesc - 1)
 #define kRxLastDesc    (kNumRxDesc - 1)
 #define kTxDescMask    (kNumTxDesc - 1)
@@ -207,7 +196,7 @@ typedef struct RtlStatData {
 #define kTxDescSize    (kNumTxDesc*sizeof(struct RtlTxDesc))
 #define kRxDescSize    (kNumRxDesc*sizeof(union RtlRxDesc))
 #define kRxBufArraySize (kNumRxDesc * sizeof(struct rtlRxBufferInfo))
-#define kTxBufArraySize (kNumTxDesc * sizeof(struct rtlTxBufferInfo))
+#define kTxBufArraySize (kNumTxDesc * sizeof(mbuf_t))
 
 /* Numbers of IOMemoryDescriptors and IORanges for tx */
 #define kNumTxMemDesc       (kNumTxDesc / 2)
@@ -228,12 +217,11 @@ typedef struct RtlStatData {
 /* This is the receive buffer size (must be large enough to hold a packet). */
 #define kRxBufferSize   PAGE_SIZE
 
-/* This is the receive buffer size (must be large enough to hold a packet). */
 #define kMCFilterLimit  32
 #define kMaxMtu 9000
 #define kMaxPacketSize (kMaxMtu + ETH_HLEN + VLAN_HLEN + ETH_FCS_LEN)
 
-/* statitics dump delay in ms. */
+/* statitics dump delay in ns. */
 #define kStatDelayTime 1000000UL    /* 1ms */
 
 /* RealtekRxPool capacities */
@@ -241,32 +229,15 @@ typedef struct RtlStatData {
 #define kRxPoolMbufCap   50     /* mbufs without clusters */
 
 /* Treshhold value to wake a stalled queue */
-#define kTxQueueWakeTreshhold (kNumTxDesc / 4)
-#define kMinFreeDescs (kMaxSegs + 2)
+#define kTxQueueWakeTreshhold (kNumTxDesc / 10)
 
 /* transmitter deadlock treshhold in seconds. */
 #define kTxDeadlockTreshhold 6
 #define kTxCheckTreshhold (kTxDeadlockTreshhold - 1)
 #define kTimerPeriod    1000000000UL
 
-/* timer value for interrupt throttling */
-#define kTimerDefault   0x2600
-#define kTimerBulk      0x5000
-#define kTimer5000      0x4000
-#define kTimerLat1   (kTimerDefault / 2)
-#define kTimerLat2   ((kTimerDefault / 4) * 3)
-
-#define kIPv6HdrLen     ((UInt32)sizeof(struct ip6_hdr))
-#define kIPv4HdrLen     sizeof(struct ip)
-#define kL234HdrLenV6   (sizeof(struct ether_header) + kIPv6HdrLen + sizeof(struct tcphdr))
-#define kL234HdrLenV4   (sizeof(struct ether_header) + kIPv4HdrLen + sizeof(struct tcphdr))
-
-enum
-{
-    kPowerStateOff = 0,
-    kPowerStateOn,
-    kPowerStateCount
-};
+/* MSS value position */
+#define MSSShift_8125 18
 
 /* This definitions should have been in IOPCIDevice.h. */
 enum
@@ -277,11 +248,8 @@ enum
 
 enum
 {
-    kIOPCIEDevCtl2 = 0x04,
-    kIOPCIEDeviceControl = 8,
     kIOPCIELinkCapability = 12,
     kIOPCIELinkControl = 16,
-    kIOPCIELinkStatus = 18,
 };
 
 enum
@@ -289,6 +257,7 @@ enum
     kIOPCIELinkCtlASPM = 0x0003,    /* ASPM Control */
     kIOPCIELinkCtlL0s = 0x0001,     /* L0s Enable */
     kIOPCIELinkCtlL1 = 0x0002,      /* L1 Enable */
+    kIOPCIELinkCtlClkPM = 0x0004,   /* Clock PM Enable */
     kIOPCIELinkCtlCcc = 0x0040,     /* Common Clock Configuration */
     kIOPCIELinkCtlClkReqEn = 0x100, /* Enable clkreq */
 };
@@ -298,6 +267,13 @@ enum
     kIOPCIELinkCapL0sSup = 0x00000400UL,
     kIOPCIELinkCapL1Sup = 0x00000800UL,
     kIOPCIELinkCapASPMCompl = 0x00400000UL,
+};
+
+enum
+{
+    kPowerStateOff = 0,
+    kPowerStateOn,
+    kPowerStateCount
 };
 
 #define kParamName "Driver Parameters"
@@ -312,8 +288,8 @@ enum
 #define kFallbackName "fallbackMAC"
 #define kNameLenght 64
 
-#define kChipsetName "Chipset"
-#define kUnknownRevisionName "ChipRevUnknown"
+extern const struct RTLChipInfo rtl_chip_info[];
+
 /*
  * Indicates if a tx IOMemoryDescriptor is in the prepared
  * (active) or completed state (inactive).
@@ -323,12 +299,6 @@ enum
     kIOMemoryInactive = 0,
     kIOMemoryActive = 1
 };
-
-typedef struct rtlTxBufferInfo {
-    mbuf_t mbuf;
-    UInt32 numDescs;
-    UInt32 packetBytes;
-} rtlTxBufferInfo;
 
 typedef struct rtlTxMapInfo {
     UInt16 txNextMem2Use;
@@ -382,8 +352,8 @@ extern const int version_major;
 
 class RTL8125 : public super
 {
+    
     OSDeclareDefaultStructors(RTL8125)
-
     
 public:
     /* IOService (or its superclass) methods. */
@@ -431,25 +401,20 @@ public:
     virtual UInt32 getFeatures() const override;
     virtual IOReturn getMaxPacketSize(UInt32 * maxSize) const override;
     virtual IOReturn setMaxPacketSize(UInt32 maxSize) override;
-
-private:
-    static IOReturn setPowerStateWakeAction(OSObject *owner, void *arg1, void *arg2, void *arg3, void *arg4);
-    static IOReturn setPowerStateSleepAction(OSObject *owner, void *arg1, void *arg2, void *arg3, void *arg4);
     
+private:
+    bool initPCIConfigSpace(IOPCIDevice *provider);
+    void setupASPM(IOPCIDevice *provider, bool allowL0s, bool allowL1);
     void getParams();
     bool setupMediumDict();
     bool initEventSources(IOService *provider);
-    bool initPCIConfigSpace(IOPCIDevice *provider);
-    void setupASPM(IOPCIDevice *provider, bool allowL0s, bool allowL1);
     
-    void    interruptOccurred(OSObject *client, IOInterruptEventSource *src, int count);
-    UInt32  rxInterrupt(IONetworkInterface *interface, uint32_t maxCount,
-                        IOMbufQueue *pollQueue, void *context);
-    void    txInterrupt();
-    void    pciErrorInterrupt();
+    static IOReturn setPowerStateWakeAction(OSObject *owner, void *arg1, void *arg2, void *arg3, void *arg4);
+    static IOReturn setPowerStateSleepAction(OSObject *owner, void *arg1, void *arg2, void *arg3, void *arg4);
 
-    static void runStatUpdateThread(thread_call_param_t param0);
-    void statUpdateThread();
+    void interruptOccurred(OSObject *client, IOInterruptEventSource *src, int count);
+    UInt32 rxInterrupt(IONetworkInterface *interface, uint32_t maxCount, IOMbufQueue *pollQueue, void *context);
+    void txInterrupt();
 
     bool setupRxResources();
     bool setupTxResources();
@@ -457,16 +422,42 @@ private:
     void freeRxResources();
     void freeTxResources();
     void freeStatResources();
+    
+    static IOReturn refillAction(OSObject *owner, void *arg1, void *arg2, void *arg3, void *arg4);
 
     void clearRxTxRings();
     void discardPacketFragment();
-    void updateStatitics();
+    void rtl812xCheckLinkStatus(struct rtl8125_private *tp);
     void setLinkUp();
     void setLinkDown();
     bool txHangCheck();
-    void getChecksumResult(mbuf_t m, UInt32 status1, UInt32 status2);
-    UInt32 updateIntrMode(struct rtl8125_private *tp, UInt32 status);
 
+    /* Hardware initialization methods. */
+    bool rtl812xIdentifyChip(struct rtl8125_private *tp);
+    bool rtl812xInit();
+    void initMacAddr(struct rtl8125_private *tp);
+    void rtl812xEnable();
+    void rtl812xDisable();
+    void rtl812xHwInit(struct rtl8125_private *tp);
+    void rtl812xHwConfig(struct rtl8125_private *tp);
+    void rtl812xSetMrrs(struct rtl8125_private *tp, UInt8 setting);
+    void rtl812xSetOffloadFeatures(bool active);
+    void rtl812xRestart();
+    void rtl812xSetPhyMedium(struct rtl8125_private *tp, UInt8 autoneg, UInt32 speed, UInt8 duplex, UInt64 adv);
+    void rtl812xMedium2Adv(struct rtl8125_private *tp, UInt32 index);
+    void rtl812xGetEEEMode(struct rtl8125_private *tp);
+    void rtl812xLinkDownPatch(struct rtl8125_private *tp);
+    void rtl812xLinkOnPatch(struct rtl8125_private *tp);
+    UInt32 rtl812xGetHwCloPtr(struct rtl8125_private *tp);
+    void rtl812xDoorbell(struct rtl8125_private *tp, UInt32 txTailPtr);
+
+    void rtl812xDumpTallyCounter(struct rtl8125_private *tp);
+    static void runStatUpdateThread(thread_call_param_t param0);
+    void statUpdateThread();
+
+    /* Descriptor related methods. */
+    void getChecksumResult(mbuf_t m, UInt32 status1, UInt32 status2);
+    
     /* AppleVTD support methods*/
     bool setupRxMap();
     void freeRxMap();
@@ -481,40 +472,8 @@ private:
     UInt16  rxMapBuffers(UInt16 index, UInt16 count);
 
     /* Watchdog timer method. */
-    void timerAction(IOTimerEventSource *timer);
-    
-#ifdef ENABLE_USE_FIRMWARE_FILE
-    /* Firmware methods */
-    void requestFirmware(struct rtl8125_private *tp);
-#endif  /* ENABLE_USE_FIRMWARE_FILE */
-    
-    /* Hardware initialization methods. */
-    bool rtl812xIdentifyChip(struct rtl8125_private *tp);
-    bool rtl812xInit();
-    void rtl812xInitMacAddr(struct rtl8125_private *tp);
-    void rtl812xEnable();
-    void rtl812xDisable();
-    void rtl812xSetOffloadFeatures(bool active);
-    void rtl812xSetMrrs(struct rtl8125_private *tp, UInt8 setting);
-    void rtl812xHwConfig(struct rtl8125_private *tp);
-    void rtl812xHwInit(struct rtl8125_private *tp);
-    void rtl812xSetHwFeatures(struct rtl8125_private *tp);
-    void rtl812xSetPhyMedium(struct rtl8125_private *tp, UInt8 autoneg, UInt32 speed, UInt8 duplex, UInt64 adv);
-    void rtl812xUp(struct rtl8125_private *tp);
-    void rtl812xDown(struct rtl8125_private *tp);
-    void rtl812xDumpTallyCounter(struct rtl8125_private *tp);
-    void rtl812xLinkOnPatch(struct rtl8125_private *tp);
-    void rtl812xLinkDownPatch(struct rtl8125_private *tp);
-    void rtl812xCheckLinkStatus(struct rtl8125_private *tp);
-    void rtl812xGetEEEMode(struct rtl8125_private *tp);
-    void rtl812xRestart(struct rtl8125_private *tp);
-    void rtl812xMedium2Adv(struct rtl8125_private *tp, UInt32 index);
+    void timerActionRTL8125(IOTimerEventSource *timer);
 
-#ifdef ENABLE_TX_NO_CLOSE
-    UInt32 rtl812xGetHwCloPtr(struct rtl8125_private *tp);
-    void rtl812xDoorbell(struct rtl8125_private *tp, UInt32 txTailPtr);
-#endif  /* ENABLE_TX_NO_CLOSE */
-    
 private:
     IOWorkLoop *workLoop;
     IOCommandGate *commandGate;
@@ -528,14 +487,14 @@ private:
     IOEthernetInterface *netif;
     IOMemoryMap *baseMap;
     IOMapper *mapper;
-
+    
     /* transmitter data */
     IOBufferMemoryDescriptor *txBufDesc;
     IOPhysicalAddress64 txPhyAddr;
     IODMACommand *txDescDmaCmd;
     struct RtlTxDesc *txDescArray;
     IOMbufNaturalMemoryCursor *txMbufCursor;
-    rtlTxBufferInfo *txBufArray;
+    mbuf_t *txMbufArray;
     void *txBufArrayMem;
     rtlTxMapInfo *txMapInfo;
     void *txMapMem;
@@ -543,16 +502,10 @@ private:
     UInt64 txDescDoneLast;
     UInt32 txNextDescIndex;
     UInt32 txDirtyDescIndex;
-    
-#ifdef ENABLE_TX_NO_CLOSE
     UInt32 txTailPtr0;
     UInt32 txClosePtr0;
-#endif  /* ENABLE_TX_NO_CLOSE */
-
     SInt32 txNumFreeDesc;
-    SInt32 totalBytes;
-    SInt32 totalDescs;
-    
+
     /* receiver data */
     IOBufferMemoryDescriptor *rxBufDesc;
     IOPhysicalAddress64 rxPhyAddr;
@@ -594,9 +547,10 @@ private:
     struct IOEthernetAddress fallBackMacAddr;
     IONetworkPacketPollingParameters pollParms;
 
-#ifdef ENABLE_USE_FIRMWARE_FILE
-    struct rtl812x_firmware firmware;
-#endif  /* ENABLE_USE_FIRMWARE_FILE */
+    UInt32 intrMask;
+    UInt32 intrMaskRxTx;
+    UInt32 intrMaskTimer;
+    UInt32 intrMaskPoll;
 
     /* poll intervals in ns */
     UInt64 pollTime10G;
@@ -605,28 +559,18 @@ private:
     UInt64 statDelay;
     UInt64 timerInterval;
 
-    UInt64 nextUpdate;
-    UInt32 intrMask;
-    UInt32 intrMaskRxTx;
-    UInt32 intrMaskTimer;
-    UInt32 intrMaskPoll;
-    UInt32 timerValue;
-    
     /* flags */
     UInt32 stateFlags;
     
-    bool enableASPM;
+    bool wolCapable;
     bool enableTSO4;
     bool enableTSO6;
     bool useAppleVTD;
-    bool wolCapable;
     
 #ifdef DEBUG_INTR
     UInt32 tmrInterrupts;
     UInt32 lastRxIntrupts;
     UInt32 lastTxIntrupts;
     UInt32 lastTmrIntrupts;
-    UInt32 maxRxPkt;
-    UInt32 maxTxPkt;
 #endif
 };

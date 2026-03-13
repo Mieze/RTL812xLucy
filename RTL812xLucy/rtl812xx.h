@@ -1,19 +1,30 @@
 //
-//  rtl812x.h
+//  rtl812xx.h
 //  RTL812xLucy
 //
 //  Created by Laura Müller on 21.01.26.
 //
 // This driver is based on version 9.016.01 of Realtek's r8125 driver.
 
-#ifndef rtl812x_h
-#define rtl812x_h
+#ifndef rtl812xx_h
+#define rtl812xx_h
 
 #include "linux/if_ether.h"
 #include "linux/if_vlan.h"
 #include "linux/ethtool.h"
 #include "linux/uapi/linux/mii.h"
 #include "linux/uapi/linux/mdio.h"
+
+struct RtlChipInfo {
+    const char *name;
+    const char *speed_name;
+    UInt8 mcfg;
+    UInt32 RCR_Cfg;
+    UInt32 RxConfigMask;    /* Clears the bits supported by this chip */
+    UInt32 jumbo_frame_sz;
+};
+
+#define NUM_CHIPS 16
 
 #define FIRMWARE_8125A_3    "rtl8125a-3.fw"
 #define FIRMWARE_8125B_1    "rtl8125b-1.fw"
@@ -836,6 +847,7 @@ struct rtl8125_private {
     int phy_1000_ctrl_reg;
     int phy_2500_ctrl_reg;
 
+    u8 aspm;
     u8  wol_enabled;
     u32 wol_opts;
     u8  efuse_ver;
@@ -849,7 +861,7 @@ struct rtl8125_private {
     u16 eeprom_len;
     u16 cur_page;
     u32 bios_setting;
-
+    
     void (*get_settings)(struct rtl8125_private *, struct ethtool_link_ksettings *);
     void (*phy_reset_enable)(struct rtl8125_private *);
     unsigned int (*phy_reset_pending)(struct rtl8125_private *);
@@ -931,7 +943,7 @@ struct rtl8125_private {
 
     u8 HwSuppIntMitiVer;
 
-    u8 HwSuppExtendTallyCounterVer;
+    //u8 HwSuppExtendTallyCounterVer;
 
     u8 check_keep_link_speed;
     u8 resume_not_chg_speed;
@@ -949,8 +961,8 @@ struct rtl8125_private {
     u8 HwPkgDet;
     u8 HwSuppOcpChannelVer;
     u32 DashFirmwareVersion;
-    //u32 SizeOfSendToFwBuffer;
-    //u32 SizeOfRecvFromFwBuffer;
+    u32 SizeOfSendToFwBuffer;
+    u32 SizeOfRecvFromFwBuffer;
     u8 AllowAccessDashOcp;
     DECLARE_BITMAP(dash_req_flags, R8125_DASH_REQ_FLAG_MAX);
 
@@ -979,6 +991,8 @@ struct rtl8125_private {
 #define LSOPKTSIZE_MAX                  0xffffU
 #define MSS_MAX                         0x07ffu /* MSS value */
 
+#define RTL8168FP_OOBMAC_BASE 0xBAF70000
+
 #define OOB_CMD_RESET       0x00
 #define OOB_CMD_DRIVER_START    0x05
 #define OOB_CMD_DRIVER_STOP 0x06
@@ -995,7 +1009,7 @@ struct rtl8125_private {
 #define NIC_RAMCODE_VERSION_CFG_METHOD_2 (0x0b11)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_3 (0x0b33)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_4 (0x0b17)
-#define NIC_RAMCODE_VERSION_CFG_METHOD_5 (0x0b99)
+#define NIC_RAMCODE_VERSION_CFG_METHOD_5 (0x0b55)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_8 (0x0013)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_9 (0x0001)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_10 (0x0027)
@@ -1053,13 +1067,14 @@ static const u16 other_q_intr_mask = (RxOK1 | RxDU1);
 extern "C" {
     bool rtl8125_aspm_is_safe(struct rtl8125_private *tp);
     bool rtl8125_is_speed_mode_valid(u32 speed);
+    void rtl8125_set_link_option(struct rtl8125_private *tp, u8 autoneg, u32 speed, u8 duplex,  enum rtl8125_fc_mode fc);
 
     void rtl8125_gset_xmii(struct rtl8125_private *tp, struct ethtool_link_ksettings *cmd);
     void rtl8125_xmii_reset_enable(struct rtl8125_private *tp);
     unsigned int rtl8125_xmii_reset_pending(struct rtl8125_private *tp);
     unsigned int rtl8125_xmii_link_ok(struct rtl8125_private *tp);
 
-    void rtl8125_init_software_variable(struct rtl8125_private *tp, int aspm);
+    void rtl8125_init_software_variable(struct rtl8125_private *tp);
     void rtl8125_exit_oob(struct rtl8125_private *tp);
 
     void rtl8125_nic_reset(struct rtl8125_private *tp);
@@ -1074,22 +1089,20 @@ extern "C" {
     void rtl8125_enable_force_clkreq(struct rtl8125_private *tp, bool enable);
     void rtl8125_enable_aspm_clkreq_lock(struct rtl8125_private *tp, bool enable);
     void rtl8125_set_eee_lpi_timer(struct rtl8125_private *tp);
-    u32 rtl8125_mdio_direct_read_phy_ocp(struct rtl8125_private *tp, u16 RegAddr);
-    void rtl8125_mdio_direct_write_phy_ocp(struct rtl8125_private *tp, u16 RegAddr, u16 value);
+    u32 mdio_direct_read_phy_ocp(struct rtl8125_private *tp, u16 RegAddr);
+    void mdio_direct_write_phy_ocp(struct rtl8125_private *tp, u16 RegAddr, u16 value);
     u32 rtl8125_mdio_read(struct rtl8125_private *tp, u16 RegAddr);
     void rtl8125_mdio_write(struct rtl8125_private *tp, u16 RegAddr, u16 value);
     void rtl8125_mac_ocp_write(struct rtl8125_private *tp, u16 reg_addr, u16 value);
     u16 rtl8125_mac_ocp_read(struct rtl8125_private *tp, u16 reg_addr);
     void mac_mcu_write(struct rtl8125_private *tp, u16 reg, u16 value);
     u32 mac_mcu_read(struct rtl8125_private *tp, u16 reg);
-    void rtl8125_set_mac_ocp_bit(struct rtl8125_private *tp, u16 addr, u16 mask);
     void rtl8125_enable_tcam(struct rtl8125_private *tp);
     void rtl8125_set_l1_l0s_entry_latency(struct rtl8125_private *tp);
     void rtl8126_disable_l1_timeout(struct rtl8125_private *tp);
     void rtl8125_enable_mcu(struct rtl8125_private *tp, bool enable);
     void rtl8125_oob_mutex_lock(struct rtl8125_private *tp);;
     void rtl8125_oob_mutex_unlock(struct rtl8125_private *tp);;
-    void rtl8125_clear_mac_ocp_bit( struct rtl8125_private *tp, u16 addr, u16 mask);
     int rtl8125_disable_eee_plus(struct rtl8125_private *tp);
     void rtl8125_clear_tcam_entries(struct rtl8125_private *tp);
     void rtl8125_enable_exit_l1_mask(struct rtl8125_private *tp);
@@ -1105,8 +1118,7 @@ extern "C" {
     void rtl8125_hw_clear_int_miti(struct rtl8125_private *tp);
     void rtl8125_ephy_write(struct rtl8125_private *tp, int RegAddr, int value);
     void rtl8125_hw_ephy_config(struct rtl8125_private *tp);
-    void rtl8125_hw_phy_config(struct rtl8125_private *tp, int aspm);
-    u32 rtl8125_get_phy_status(struct rtl8125_private *tp);
+    void rtl8125_hw_phy_config(struct rtl8125_private *tp);
     void rtl8125_phy_restart_nway(struct rtl8125_private *tp);
     int rtl8125_wait_phy_nway_complete_sleep(struct rtl8125_private *tp);
     void rtl8125_setup_mqs_reg(struct rtl8125_private *tp);
@@ -1134,6 +1146,23 @@ extern "C" {
 
     void rtl8125_apply_firmware(struct rtl8125_private *tp);
     void rtl8125_hw_mac_mcu_config(struct rtl8125_private *tp);
+    void rtl8125_get_bios_setting(struct rtl8125_private *tp);
+    void rtl8125_set_bios_setting(struct rtl8125_private *tp);
+    u8 rtl8125_csi_fun0_read_byte(struct rtl8125_private *tp, u32 addr);
+    u32 rtl8125_get_hw_wol(struct rtl8125_private *tp);
+    void rtl8125_set_l1_l0s_entry_latency(struct rtl8125_private *tp);
+    void rtl8125_hw_init(struct rtl8125_private *tp);
+    void ClearMcuAccessRegBit( struct rtl8125_private *tp, u16 addr, u16 mask);
+    void SetMcuAccessRegBit(struct rtl8125_private *tp, u16 addr, u16 mask);
+    void rtl8125_phy_power_down(struct rtl8125_private *tp);
+    void rtl8125_set_hw_phy_before_init_phy_mcu(struct rtl8125_private *tp);
+    void rtl8125_set_hw_wol(struct rtl8125_private *tp, u32 wolopts);
+    void rtl8125_init_hw_phy_mcu(struct rtl8125_private *tp);
+    void rtl8125_clear_eth_phy_bit(struct rtl8125_private *tp, u8 addr, u16 mask);
+    void ClearAndSetEthPhyOcpBit(struct rtl8125_private *tp, u16 addr, u16 clearmask, u16 setmask);
+    void ClearEthPhyOcpBit(struct rtl8125_private *tp, u16 addr, u16 mask);
+    void SetEthPhyOcpBit(struct rtl8125_private *tp,  u16 addr, u16 mask);
+    void rtl8125_set_mac_ocp_bit(struct rtl8125_private *tp, u16 addr, u16 mask);
 
     void linkmode_mod_bit(unsigned int nbit, unsigned long *dst, u32 value);
     void linkmode_set_bit(unsigned int nbit, unsigned int *dst);
@@ -1141,13 +1170,14 @@ extern "C" {
 #else
 bool rtl8125_aspm_is_safe(struct rtl8125_private *tp);
 bool rtl8125_is_speed_mode_valid(u32 speed);
+void rtl8125_set_link_option(struct rtl8125_private *tp, u8 autoneg, u32 speed, u8 duplex,  enum rtl8125_fc_mode fc);
 
 void rtl8125_gset_xmii(struct rtl8125_private *tp, struct ethtool_link_ksettings *cmd);
 void rtl8125_xmii_reset_enable(struct rtl8125_private *tp);
 unsigned int rtl8125_xmii_reset_pending(struct rtl8125_private *tp);
 unsigned int rtl8125_xmii_link_ok(struct rtl8125_private *tp);
 
-void rtl8125_init_software_variable(struct rtl8125_private *tp, int aspm);
+void rtl8125_init_software_variable(struct rtl8125_private *tp);
 void rtl8125_exit_oob(struct rtl8125_private *tp);
 
 void rtl8125_nic_reset(struct rtl8125_private *tp);
@@ -1163,21 +1193,19 @@ void rtl8125_enable_force_clkreq(struct rtl8125_private *tp, bool enable);
 void rtl8125_enable_aspm_clkreq_lock(struct rtl8125_private *tp, bool enable);
 void rtl8125_set_eee_lpi_timer(struct rtl8125_private *tp);
 u32 rtl8125_mdio_direct_read_phy_ocp(struct rtl8125_private *tp, u16 RegAddr);
-void rtl8125_mdio_direct_write_phy_ocp(struct rtl8125_private *tp, u16 RegAddr, u16 value);
+void mdio_direct_write_phy_ocp(struct rtl8125_private *tp, u16 RegAddr, u16 value);
 u32 rtl8125_mdio_read(struct rtl8125_private *tp, u16 RegAddr);
 void rtl8125_mdio_write(struct rtl8125_private *tp, u16 RegAddr, u16 value);
 void rtl8125_mac_ocp_write(struct rtl8125_private *tp, u16 reg_addr, u16 value);
 u16 rtl8125_mac_ocp_read(struct rtl8125_private *tp, u16 reg_addr);
 void mac_mcu_write(struct rtl8125_private *tp, u16 reg, u16 value);
 u32 mac_mcu_read(struct rtl8125_private *tp, u16 reg);
-void rtl8125_set_mac_ocp_bit(struct rtl8125_private *tp, u16 addr, u16 mask);
 void rtl8125_enable_tcam(struct rtl8125_private *tp);
 void rtl8125_set_l1_l0s_entry_latency(struct rtl8125_private *tp);
 void rtl8126_disable_l1_timeout(struct rtl8125_private *tp);
 void rtl8125_enable_mcu(struct rtl8125_private *tp, bool enable);
 void rtl8125_oob_mutex_lock(struct rtl8125_private *tp);;
 void rtl8125_oob_mutex_unlock(struct rtl8125_private *tp);;
-void rtl8125_clear_mac_ocp_bit( struct rtl8125_private *tp, u16 addr, u16 mask);
 int rtl8125_disable_eee_plus(struct rtl8125_private *tp);
 void rtl8125_clear_tcam_entries(struct rtl8125_private *tp);
 void rtl8125_enable_exit_l1_mask(struct rtl8125_private *tp);
@@ -1193,8 +1221,7 @@ void rtl8125_hw_clear_timer_int(struct rtl8125_private *tp);
 void rtl8125_hw_clear_int_miti(struct rtl8125_private *tp);
 void rtl8125_ephy_write(struct rtl8125_private *tp, int RegAddr, int value);
 void rtl8125_hw_ephy_config(struct rtl8125_private *tp);
-void rtl8125_hw_phy_config(struct rtl8125_private *tp, int aspm);
-u32 rtl8125_get_phy_status(struct rtl8125_private *tp);
+void rtl8125_hw_phy_config(struct rtl8125_private *tp);
 void rtl8125_phy_restart_nway(struct rtl8125_private *tp);
 int rtl8125_wait_phy_nway_complete_sleep(struct rtl8125_private *tp);
 void rtl8125_setup_mqs_reg(struct rtl8125_private *tp);
@@ -1222,9 +1249,25 @@ void rtl8125_phy_setup_force_mode(struct rtl8125_private *tp, u32 speed, u8 dupl
 
 void rtl8125_apply_firmware(struct rtl8125_private *tp);
 void rtl8125_hw_mac_mcu_config(struct rtl8125_private *tp);
+void rtl8125_get_bios_setting(struct rtl8125_private *tp);
+void rtl8125_set_bios_setting(struct rtl8125_private *tp);
+u8 rtl8125_csi_fun0_read_byte(struct rtl8125_private *tp, u32 addr);
+u32 rtl8125_get_hw_wol(struct rtl8125_private *tp);
+void rtl8125_set_l1_l0s_entry_latency(struct rtl8125_private *tp);
+void ClearMcuAccessRegBit( struct rtl8125_private *tp, u16 addr, u16 mask);
+void SetMcuAccessRegBit(struct rtl8125_private *tp, u16 addr, u16 mask);
+void rtl8125_phy_power_down(struct rtl8125_private *tp);
+void rtl8125_set_hw_phy_before_init_phy_mcu(struct rtl8125_private *tp);
+void rtl8125_set_hw_wol(struct rtl8125_private *tp, u32 wolopts);
+void rtl8125_init_hw_phy_mcu(struct rtl8125_private *tp);
+void rtl8125_clear_eth_phy_bit(struct rtl8125_private *tp, u8 addr, u16 mask);
+void ClearAndSetEthPhyOcpBit(struct rtl8125_private *tp, u16 addr, u16 clearmask, u16 setmask);
+void ClearEthPhyOcpBit(struct rtl8125_private *tp, u16 addr, u16 mask);
+void SetEthPhyOcpBit(struct rtl8125_private *tp,  u16 addr, u16 mask);
+void rtl8125_set_mac_ocp_bit(struct rtl8125_private *tp, u16 addr, u16 mask);
 
 void linkmode_mod_bit(unsigned int nbit, unsigned long *dst, u32 value);
 void linkmode_set_bit(unsigned int nbit, unsigned int *dst);
 #endif // __cplusplus
 
-#endif /* rtl812x_h */
+#endif /* rtl812xx_h */

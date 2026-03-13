@@ -5,7 +5,7 @@
 //  Created by Laura Müller on 30.12.25.
 //
 
-#include "RTL8125Lucy.hpp"
+#include "RTL812xLucy.hpp"
 
 #ifndef MIN
 #define MIN(a,b) (((a)<(b))?(a):(b))
@@ -160,7 +160,7 @@ void RTL8125::freeTxMap()
 void RTL8125::interruptOccurredVTD(OSObject *client, IOInterruptEventSource *src, int count)
 {
     struct rtl8125_private *tp = &linuxData;
-    UInt32 rxPackets = 0;
+    UInt32 rxPackets;
     UInt32 status;
 
     status = RTL_R32(tp, ISR0_8125);
@@ -191,27 +191,31 @@ void RTL8125::interruptOccurredVTD(OSObject *client, IOInterruptEventSource *src
             etherStats->dot3RxExtraEntry.interrupts++;
         }
         /* Tx interrupt */
-        if (status & (TxOK)) {
+        if (status & (TxOK | RxOK | PCSTimeout)) {
             txInterrupt();
             
-            etherStats->dot3TxExtraEntry.interrupts++;
+            if (status & TxOK)
+                etherStats->dot3TxExtraEntry.interrupts++;
         }
-        if (status & (TxOK | RxOK | PCSTimeout))
-            timerValue = updateIntrMode(tp, status);
-        
-        RTL_W32(tp, TIMER_INT0_8125, timerValue);
+        if (status & (TxOK | RxOK)) {
+            RTL_W32(tp, TIMER_INT0_8125, 0x5000);
+            RTL_W32(tp, TCTR0_8125, 0x5000);
+            intrMask = intrMaskTimer;
+        } else if (status & PCSTimeout) {
+            RTL_W32(tp, TIMER_INT0_8125, 0x0000);
+            intrMask = intrMaskRxTx;
+        }
+#ifdef DEBUG_INTR
+        if (status & PCSTimeout)
+            tmrInterrupts++;
+#endif
 
-        if (timerValue)
-            RTL_W32(tp, TCTR0_8125, timerValue);
-        
         clear_bit(__POLLING, &stateFlags);
     }
     if (status & LinkChg) {
         rtl812xCheckLinkStatus(tp);
-        timerValue = 0;
+        RTL_W32(tp, TIMER_INT0_8125, 0x000);
         intrMask = intrMaskRxTx;
-
-        RTL_W32(tp, TIMER_INT0_8125, timerValue);
     }
     
 done:

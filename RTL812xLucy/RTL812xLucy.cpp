@@ -1,6 +1,6 @@
-/* RTL8125.hpp -- RTL812x driver class implementation.
+/* RTL812xEthernet.cpp -- RTL8125 driver class implementation.
 *
-* Copyright (c) 2025 Laura Müller <laura-mueller@uni-duesseldorf.de>
+* Copyright (c) 2020 Laura Müller <laura-mueller@uni-duesseldorf.de>
 * All rights reserved.
 *
 * This program is free software; you can redistribute it and/or modify it
@@ -13,119 +13,142 @@
 * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
 * more details.
 *
-* Driver for Realtek RTL812x PCIe 2.5/5/10Gbit Ethernet controllers.
+* Driver for Realtek RTL8125 PCIe 2.5GB ethernet controllers.
 *
-* This driver is based on version 9.016.01 of Realtek's r8125 driver.
+* This driver is based on Realtek's r8125 Linux driver (9.003.04).
 */
 
-#include "RTL8125Lucy.hpp"
-#include "RTL8125LucyRxPool.hpp"
+#include "RTL812xLucy.hpp"
+
+#pragma mark --- function prototypes ---
+
+static inline void prepareTSO4(mbuf_t m, UInt32 *tcpOffset, UInt32 *mss);
+static inline void prepareTSO6(mbuf_t m, UInt32 *tcpOffset, UInt32 *mss);
+
+static inline u32 ether_crc(int length, unsigned char *data);
+
 
 #pragma mark --- static data ---
+
+//static const char *speed10GName = "10 Gigabit";
+static const char *speed5GName = "5 Gigabit";
+static const char *speed25GName = "2.5 Gigabit";
+static const char *speed1GName = "1 Gigabit";
+static const char *speed100MName = "100 Megabit";
+static const char *speed10MName = "10 Megabit";
+static const char *duplexFullName = "full-duplex";
+static const char *duplexHalfName = "half-duplex";
+static const char *offFlowName = "no flow-control";
+static const char *onFlowName = "flow-control";
+
+static const char* eeeNames[kEEETypeCount] = {
+    "",
+    ", energy-efficient-ethernet"
+};
 
 #define _R(NAME,SNAME,MAC,RCR,MASK,JumFrameSz) \
     { .name = NAME, .speed_name = SNAME, .mcfg = MAC, .RCR_Cfg = RCR, .RxConfigMask = MASK, .jumbo_frame_sz = JumFrameSz }
 
 const struct RtlChipInfo rtlChipInfo[NUM_CHIPS] {
-    _R("RTL8125A",
+    _R("RTL8125A rev. 1",
     "2.5",
     CFG_METHOD_2,
     Rx_Fetch_Number_8 | EnableInnerVlan | EnableOuterVlan | (RX_DMA_BURST_256 << RxCfgDMAShift),
     0xff7e5880,
     Jumbo_Frame_9k),
 
-    _R("RTL8125A",
+    _R("RTL8125A rev. 2",
     "2.5",
     CFG_METHOD_3,
     Rx_Fetch_Number_8 | EnableInnerVlan | EnableOuterVlan | (RX_DMA_BURST_256 << RxCfgDMAShift),
     0xff7e5880,
     Jumbo_Frame_9k),
 
-    _R("RTL8125B",
+    _R("RTL8125B rev. 1",
     "2.5",
     CFG_METHOD_4,
     Rx_Fetch_Number_8 | RxCfg_pause_slot_en | EnableInnerVlan | EnableOuterVlan | (RX_DMA_BURST_256 << RxCfgDMAShift),
     0xff7e5880,
     Jumbo_Frame_9k),
 
-    _R("RTL8125B",
+    _R("RTL8125B rev. 2",
     "2.5",
     CFG_METHOD_5,
     Rx_Fetch_Number_8 | RxCfg_pause_slot_en | EnableInnerVlan | EnableOuterVlan | (RX_DMA_BURST_256 << RxCfgDMAShift),
     0xff7e5880,
     Jumbo_Frame_9k),
 
-    _R("RTL8168KB",
+    _R("RTL8168KB rev. 1",
     "2.5",
     CFG_METHOD_6,
     Rx_Fetch_Number_8 | EnableInnerVlan | EnableOuterVlan | (RX_DMA_BURST_256 << RxCfgDMAShift),
     0xff7e5880,
     Jumbo_Frame_9k),
 
-    _R("RTL8168KB",
+    _R("RTL8168KB rev. 2",
     "2.5",
     CFG_METHOD_7,
     Rx_Fetch_Number_8 | RxCfg_pause_slot_en | EnableInnerVlan | EnableOuterVlan | (RX_DMA_BURST_256 << RxCfgDMAShift),
     0xff7e5880,
     Jumbo_Frame_9k),
 
-    _R("RTL8125BP",
+    _R("RTL8125BP rev. 1",
     "2.5",
     CFG_METHOD_8,
     Rx_Fetch_Number_8 | Rx_Close_Multiple | RxCfg_pause_slot_en | EnableInnerVlan | EnableOuterVlan | (RX_DMA_BURST_256 << RxCfgDMAShift),
     0xff7e5880,
     Jumbo_Frame_9k),
 
-    _R("RTL8125BP",
+    _R("RTL8125BP rev. 2",
     "2.5",
     CFG_METHOD_9,
     Rx_Fetch_Number_8 | Rx_Close_Multiple | RxCfg_pause_slot_en | EnableInnerVlan | EnableOuterVlan | (RX_DMA_BURST_256 << RxCfgDMAShift),
     0xff7e5880,
     Jumbo_Frame_9k),
 
-    _R("RTL8125D",
+    _R("RTL8125D rev. 1",
     "2.5",
     CFG_METHOD_10,
     Rx_Fetch_Number_8 | Rx_Close_Multiple | RxCfg_pause_slot_en | EnableInnerVlan | EnableOuterVlan | (RX_DMA_BURST_256 << RxCfgDMAShift),
     0xff7e5880,
     Jumbo_Frame_9k),
 
-    _R("RTL8125D",
+    _R("RTL8125D rev. 2",
     "2.5",
     CFG_METHOD_11,
     Rx_Fetch_Number_8 | Rx_Close_Multiple | RxCfg_pause_slot_en | EnableInnerVlan | EnableOuterVlan | (RX_DMA_BURST_256 << RxCfgDMAShift),
     0xff7e5880,
     Jumbo_Frame_9k),
 
-    _R("RTL8125CP",
+    _R("RTL8125CP rev. 1",
     "2.5",
     CFG_METHOD_12,
     Rx_Fetch_Number_8 | Rx_Close_Multiple | RxCfg_pause_slot_en | EnableInnerVlan | EnableOuterVlan | (RX_DMA_BURST_256 << RxCfgDMAShift),
     0xff7e5880,
     Jumbo_Frame_9k),
 
-    _R("RTL8168KD",
+    _R("RTL8168KD rev. 1",
     "2.5",
     CFG_METHOD_13,
     Rx_Fetch_Number_8 | Rx_Close_Multiple | RxCfg_pause_slot_en | EnableInnerVlan | EnableOuterVlan | (RX_DMA_BURST_256 << RxCfgDMAShift),
     0xff7e5880,
     Jumbo_Frame_9k),
     
-    _R("RTL8126A",
+    _R("RTL8126A rev. 1",
     "5",
     CFG_METHOD_31,
     Rx_Fetch_Number_8 | RxCfg_pause_slot_en | EnableInnerVlan | EnableOuterVlan | (RX_DMA_BURST_512 << RxCfgDMAShift),
     0xff7e5880,
     Jumbo_Frame_9k),
 
-    _R("RTL8126A",
+    _R("RTL8126A rev. 2",
     "5",
     CFG_METHOD_32,
     Rx_Fetch_Number_8 | Rx_Close_Multiple | RxCfg_pause_slot_en | EnableInnerVlan | EnableOuterVlan | (RX_DMA_BURST_512 << RxCfgDMAShift),
     0xff7e5880,
     Jumbo_Frame_9k),
 
-    _R("RTL8126A",
+    _R("RTL8126A rev. 3",
     "5",
     CFG_METHOD_33,
     Rx_Fetch_Number_8 | Rx_Close_Multiple | RxCfg_pause_slot_en | EnableInnerVlan | EnableOuterVlan | (RX_DMA_BURST_512 << RxCfgDMAShift),
@@ -140,22 +163,6 @@ const struct RtlChipInfo rtlChipInfo[NUM_CHIPS] {
     Jumbo_Frame_1k)
 };
 #undef _R
-
-/* Power Management Support */
-static IOPMPowerState powerStateArray[kPowerStateCount] =
-{
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-    {1, kIOPMDeviceUsable, kIOPMPowerOn, kIOPMPowerOn, 0, 0, 0, 0, 0, 0, 0, 0}
-};
-
-static unsigned const ethernet_polynomial = 0x04c11db7U;
-
-#pragma mark --- function prototypes ---
-
-static inline void prepareTSO4(mbuf_t m, UInt32 *tcpOffset, UInt32 *mss);
-static inline void prepareTSO6(mbuf_t m, UInt32 *tcpOffset, UInt32 *mss);
-
-static inline u32 ether_crc(int length, unsigned char *data);
 
 #pragma mark --- public methods ---
 
@@ -191,44 +198,42 @@ bool RTL8125::init(OSDictionary *properties)
         rxPacketHead = NULL;
         rxPacketTail = NULL;
         rxPacketSize = 0;
-        
+
         /* Initialize state flags. */
         stateFlags = 0;
         
         mtu = ETH_DATA_LEN;
         powerState = 0;
+        //speed = 0;
+        //duplex = DUPLEX_FULL;
+        //autoneg = AUTONEG_ENABLE;
+        //flowCtl = kFlowControlOff;
+        //eeeCap = 0;
+        memset(&linuxData, 0, sizeof(struct rtl8125_private));
+        linuxData.mmio_addr = NULL;
+        linuxData.aspm = 0;
+        //linuxData.configEEE = 0;
+        //linuxData.s0MagicPacket = 0;
+        //linuxData.hwoptimize = 0;
+        linuxData.DASH = 0;
         pciDeviceData.vendor = 0;
         pciDeviceData.device = 0;
         pciDeviceData.subsystem_vendor = 0;
         pciDeviceData.subsystem_device = 0;
-        memset(&linuxData, 0, sizeof(struct rtl8125_private));
         linuxData.pci_dev = &pciDeviceData;
-        
-#ifdef ENABLE_USE_FIRMWARE_FILE
-        linuxData.fw_name = NULL;
-        linuxData.rtl_fw = NULL;
-        
-        firmware.fw.size = 0;
-        firmware.fw.data = NULL;
-        firmware.fw.priv = NULL;
-#endif  /* ENABLE_USE_FIRMWARE_FILE */
-
         rtlChipInfos = &rtlChipInfo[0];
-        timerValue = 0;
+        //pollInterval2500 = 0;
+        wolCapable = false;
         enableTSO4 = false;
         enableTSO6 = false;
-        wolCapable = false;
+        useAppleVTD = false;
         pciPMCtrlOffset = 0;
-        pcieCapOffset = 0;
-
         memset(fallBackMacAddr.bytes, 0, kIOEthernetAddressSize);
         nanoseconds_to_absolutetime(kStatDelayTime, &statDelay);
         nanoseconds_to_absolutetime(kTimerPeriod, &timerInterval);
 
 #ifdef DEBUG_INTR
         lastRxIntrupts = lastTxIntrupts = lastTmrIntrupts = tmrInterrupts = 0;
-        maxRxPkt = 0;
-        maxTxPkt = 0;
 #endif
     }
     
@@ -260,7 +265,7 @@ void RTL8125::free()
     
     for (i = MIDX_AUTO; i < MIDX_COUNT; i++)
         mediumTable[i] = NULL;
-    
+
     RELEASE(baseMap);
     linuxData.mmio_addr = NULL;
     
@@ -302,11 +307,11 @@ bool RTL8125::start(IOService *provider)
     mapper = IOMapper::copyMapperForDevice(pciDevice);
 
     getParams();
-        
+    
     if (!initPCIConfigSpace(pciDevice)) {
         goto error_cfg;
     }
-    
+
     if (!rtl812xInit()) {
         IOLog("Failed to initialize chip.\n");
         goto error_cfg;
@@ -373,7 +378,7 @@ error_gate:
 
 error_cfg:
     pciDevice->close(this);
-
+    
 error_open:
     pciDevice->release();
     pciDevice = NULL;
@@ -419,6 +424,13 @@ void RTL8125::stop(IOService *provider)
     super::stop(provider);
 }
 
+/* Power Management Support */
+static IOPMPowerState powerStateArray[kPowerStateCount] =
+{
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+    {1, kIOPMDeviceUsable, kIOPMPowerOn, kIOPMPowerOn, 0, 0, 0, 0, 0, 0, 0, 0}
+};
+
 IOReturn RTL8125::registerWithPolicyMaker(IOService *policyMaker)
 {
     DebugLog("registerWithPolicyMaker() ===>\n");
@@ -457,14 +469,16 @@ done:
 
 void RTL8125::systemWillShutdown(IOOptionBits specifier)
 {
+    struct rtl8125_private *tp = &linuxData;
+    
     DebugLog("systemWillShutdown() ===>\n");
     
     if ((kIOMessageSystemWillPowerOff | kIOMessageSystemWillRestart) & specifier) {
         disable(netif);
         
         /* Restore the original MAC address. */
-        if (is_valid_ether_addr((UInt8 *)&origMacAddr.bytes))
-            rtl8125_rar_set(&linuxData, (UInt8 *)&origMacAddr.bytes);
+        rtl8125_rar_set(tp, (UInt8 *)&origMacAddr.bytes);
+        rtl8125_set_bios_setting(tp);
     }
     
     DebugLog("systemWillShutdown() <===\n");
@@ -570,8 +584,7 @@ IOReturn RTL8125::outputStart(IONetworkInterface *interface, IOOptionBits option
 {
     IOPhysicalSegment txSegments[kMaxSegs];
     mbuf_t m;
-    RtlTxDesc *desc;
-    UInt64 pktBytes;
+    RtlTxDesc *desc, *firstDesc;
     IOReturn result = kIOReturnNoResources;
     UInt32 cmd;
     UInt32 opts2;
@@ -592,7 +605,7 @@ IOReturn RTL8125::outputStart(IONetworkInterface *interface, IOOptionBits option
         DebugLog("Interface down. Dropping packets.\n");
         goto done;
     }
-    while ((txNumFreeDesc > kMinFreeDescs) && (interface->dequeueOutputPackets(1, &m, NULL, NULL, &pktBytes) == kIOReturnSuccess)) {
+    while ((txNumFreeDesc > (kMaxSegs + 3)) && (interface->dequeueOutputPackets(1, &m, NULL, NULL, NULL) == kIOReturnSuccess)) {
         cmd = 0;
         opts2 = 0;
 
@@ -601,20 +614,20 @@ IOReturn RTL8125::outputStart(IONetworkInterface *interface, IOOptionBits option
 
         if (mbuf_get_tso_requested(m, &offloadFlags, &mss)) {
             DebugLog("mbuf_get_tso_requested() failed. Dropping packet.\n");
-            mbuf_freem_list(m);
+            freePacket(m);
             continue;
         }
         if (offloadFlags & (MBUF_TSO_IPV4 | MBUF_TSO_IPV6)) {
             if (offloadFlags & MBUF_TSO_IPV4) {
-                if ((len - ETH_HLEN) > mtu) {
+                if ((len - kMacHdrLen) > mtu) {
                     /*
                      * Fix the pseudo header checksum, get the
-                     * TCP header offset and set paylen.
+                     * TCP header size and set paylen.
                      */
                     prepareTSO4(m, &tcpOff, &mss);
                     
                     cmd = (GiantSendv4 | (tcpOff << GTTCPHO_SHIFT));
-                    opts2 = ((mss & MSSMask) << MSSShift);
+                    opts2 = ((mss & MSSMask) << MSSShift_8125);
                 } else {
                     /*
                      * There is no need for a TSO4 operation as the packet
@@ -624,19 +637,19 @@ IOReturn RTL8125::outputStart(IONetworkInterface *interface, IOOptionBits option
                     opts2 = (TxIPCS_C | TxTCPCS_C);
                 }
             } else {
-                if ((len - ETH_HLEN) > mtu) {
+                if ((len - kMacHdrLen) > mtu) {
                     /* The pseudoheader checksum has to be adjusted first. */
                     prepareTSO6(m, &tcpOff, &mss);
                     
                     cmd = (GiantSendv6 | (tcpOff << GTTCPHO_SHIFT));
-                    opts2 = ((mss & MSSMask) << MSSShift);
+                    opts2 = ((mss & MSSMask) << MSSShift_8125);
                 } else {
                     /*
                      * There is no need for a TSO6 operation as the packet
                      * can be sent in one frame.
                      */
                     offloadFlags = kChecksumTCPIPv6;
-                    opts2 = (TxTCPCS_C | TxIPV6F_C | (((ETH_HLEN + kIPv6HdrLen) & TCPHO_MAX) << TCPHO_SHIFT));
+                    opts2 = (TxTCPCS_C | TxIPV6F_C | (((kMacHdrLen + kIPv6HdrLen) & TCPHO_MAX) << TCPHO_SHIFT));
                 }
             }
         } else {
@@ -646,11 +659,11 @@ IOReturn RTL8125::outputStart(IONetworkInterface *interface, IOOptionBits option
             if (offloadFlags & kChecksumTCP)
                 opts2 = (TxIPCS_C | TxTCPCS_C);
             else if (offloadFlags & kChecksumTCPIPv6)
-                opts2 = (TxTCPCS_C | TxIPV6F_C | (((ETH_HLEN + kIPv6HdrLen) & TCPHO_MAX) << TCPHO_SHIFT));
+                opts2 = (TxTCPCS_C | TxIPV6F_C | (((kMacHdrLen + kIPv6HdrLen) & TCPHO_MAX) << TCPHO_SHIFT));
             else if (offloadFlags & kChecksumUDP)
                 opts2 = (TxIPCS_C | TxUDPCS_C);
             else if (offloadFlags & kChecksumUDPIPv6)
-                opts2 = (TxUDPCS_C | TxIPV6F_C | (((ETH_HLEN + kIPv6HdrLen) & TCPHO_MAX) << TCPHO_SHIFT));
+                opts2 = (TxUDPCS_C | TxIPV6F_C | (((kMacHdrLen + kIPv6HdrLen) & TCPHO_MAX) << TCPHO_SHIFT));
             else if (offloadFlags & kChecksumIP)
                 opts2 = TxIPCS_C;
         }
@@ -667,17 +680,14 @@ IOReturn RTL8125::outputStart(IONetworkInterface *interface, IOOptionBits option
          */
         if (!numSegs) {
             DebugLog("getPhysicalSegmentsWithCoalesce() failed. Dropping packet.\n");
-            mbuf_freem_list(m);
+            freePacket(m);
             continue;
         }
         OSAddAtomic(-numSegs, &txNumFreeDesc);
         index = txNextDescIndex;
         txNextDescIndex = (txNextDescIndex + numSegs) & kTxDescMask;
-        
-#ifdef ENABLE_TX_NO_CLOSE
         txTailPtr0 += numSegs;
-#endif  /* ENABLE_TX_NO_CLOSE */
-
+        firstDesc = &txDescArray[index];
         lastSeg = numSegs - 1;
         
         /* Next fill in the VLAN tag. */
@@ -686,49 +696,31 @@ IOReturn RTL8125::outputStart(IONetworkInterface *interface, IOOptionBits option
         /* And finally fill in the descriptors. */
         for (i = 0; i < numSegs; i++) {
             desc = &txDescArray[index];
-            opts1 = (((UInt32)txSegments[i].length) | cmd | DescOwn);
-            
-            if (i == 0)
-                opts1 |= FirstFrag;
-
-            //opts1 |= (i == 0) ? (FirstFrag | DescOwn) : DescOwn;
+            opts1 = (((UInt32)txSegments[i].length) | cmd);
+            opts1 |= (i == 0) ? FirstFrag : DescOwn;
             
             if (i == lastSeg) {
                 opts1 |= LastFrag;
-                txBufArray[index].mbuf = m;
-                txBufArray[index].numDescs = numSegs;
-                txBufArray[index].packetBytes = (UInt32)pktBytes;
+                txMbufArray[index] = m;
             } else {
-                txBufArray[index].mbuf = NULL;
-                txBufArray[index].numDescs = 0;
-                txBufArray[index].packetBytes = 0;
+                txMbufArray[index] = NULL;
             }
             if (index == kTxLastDesc)
                 opts1 |= RingEnd;
             
             desc->addr = OSSwapHostToLittleInt64(txSegments[i].location);
             desc->opts2 = OSSwapHostToLittleInt32(opts2);
-            
-#ifndef ENABLE_TX_NO_CLOSE
-            wmb();
-#endif  /* ENABLE_TX_NO_CLOSE */
-
             desc->opts1 = OSSwapHostToLittleInt32(opts1);
             
             //DebugLog("opts1=0x%x, opts2=0x%x, addr=0x%llx, len=0x%llx\n", opts1, opts2, txSegments[i].location, txSegments[i].length);
             ++index &= kTxDescMask;
         }
+        firstDesc->opts1 |= DescOwn;
     }
-    wmb();
-    
-#ifdef ENABLE_TX_NO_CLOSE
     /* Update tail pointer. */
     rtl812xDoorbell(&linuxData, txTailPtr0);
-#else
-    RTL_W16(&linuxData, TPPOLL_8125, BIT_0);
-#endif  /* ENABLE_TX_NO_CLOSE */
 
-    result = (txNumFreeDesc > kMinFreeDescs) ? kIOReturnSuccess : kIOReturnNoResources;
+    result = (txNumFreeDesc > (kMaxSegs + 3)) ? kIOReturnSuccess : kIOReturnNoResources;
     
 done:
     //DebugLog("outputStart() <===\n");
@@ -752,7 +744,7 @@ IOOutputQueue* RTL8125::createOutputQueue()
     
     DebugLog("createOutputQueue() <===\n");
 
-    return IOBasicOutputQueue::withTarget(this, kTransmitQueueCapacity);
+    return IOBasicOutputQueue::withTarget(this);
 }
 
 const OSString* RTL8125::newVendorString() const
@@ -810,7 +802,7 @@ bool RTL8125::configureInterface(IONetworkInterface *interface)
             goto done;
         }
     }
-    error = interface->configureOutputPullModel(kNumTxDesc, 0, 0, IONetworkInterface::kOutputPacketSchedulingModelNormal);
+    error = interface->configureOutputPullModel((kNumTxDesc/2), 0, 0, IONetworkInterface::kOutputPacketSchedulingModelNormal);
     
     if (error != kIOReturnSuccess) {
         IOLog("configureOutputPullModel() failed\n.");
@@ -853,6 +845,23 @@ IOWorkLoop* RTL8125::getWorkLoop() const
     return workLoop;
 }
 
+/* Methods inherited from IOEthernetController. */
+IOReturn RTL8125::getHardwareAddress(IOEthernetAddress *addr)
+{
+    IOReturn result = kIOReturnError;
+    
+    DebugLog("getHardwareAddress() ===>\n");
+    
+    if (addr) {
+        bcopy(&currMacAddr.bytes, addr->bytes, kIOEthernetAddressSize);
+        result = kIOReturnSuccess;
+    }
+    
+    DebugLog("getHardwareAddress() <===\n");
+
+    return result;
+}
+
 IOReturn RTL8125::setPromiscuousMode(bool active)
 {
     struct rtl8125_private *tp = &linuxData;
@@ -872,10 +881,10 @@ IOReturn RTL8125::setPromiscuousMode(bool active)
         mcFilter[0] = *filterAddr++;
         mcFilter[1] = *filterAddr;
     }
-    rxMode |= tp->rtl8125_rx_config | (RTL_R32(&linuxData, RxConfig) & rtlChipInfo[tp->chipset].RxConfigMask);
+    rxMode |= tp->rtl8125_rx_config | (RTL_R32(tp, RxConfig) & rtlChipInfos[tp->chipset].RxConfigMask);
     RTL_W32(tp, RxConfig, rxMode);
-    RTL_W32(tp, MAR1, mcFilter[1]);
     RTL_W32(tp, MAR0, mcFilter[0]);
+    RTL_W32(tp, MAR1, mcFilter[1]);
 
     if (active)
         set_bit(__PROMISC, &stateFlags);
@@ -904,11 +913,11 @@ IOReturn RTL8125::setMulticastMode(bool active)
         rxMode = (AcceptBroadcast | AcceptMyPhys);
         mcFilter[1] = mcFilter[0] = 0;
     }
-    rxMode |= tp->rtl8125_rx_config | (RTL_R32(&linuxData, RxConfig) & rtlChipInfo[tp->chipset].RxConfigMask);
+    rxMode |= tp->rtl8125_rx_config | (RTL_R32(tp, RxConfig) & rtlChipInfos[tp->chipset].RxConfigMask);
     RTL_W32(tp, RxConfig, rxMode);
-    RTL_W32(tp, MAR1, mcFilter[1]);
     RTL_W32(tp, MAR0, mcFilter[0]);
-
+    RTL_W32(tp, MAR1, mcFilter[1]);
+    
     if (active)
         set_bit(__M_CAST, &stateFlags);
     else
@@ -922,8 +931,8 @@ IOReturn RTL8125::setMulticastMode(bool active)
 IOReturn RTL8125::setMulticastList(IOEthernetAddress *addrs, UInt32 count)
 {
     struct rtl8125_private *tp = &linuxData;
-    UInt32 *filterAddr = (UInt32 *)&multicastFilter;
     UInt64 filter = 0;
+    UInt32 *filterAddr = (UInt32 *)&multicastFilter;
     UInt32 i, bitNumber;
     
     DebugLog("setMulticastList() ===>\n");
@@ -937,8 +946,8 @@ IOReturn RTL8125::setMulticastList(IOEthernetAddress *addrs, UInt32 count)
     } else {
         multicastFilter = 0xffffffffffffffff;
     }
-    RTL_W32(tp, MAR1, *filterAddr);
     RTL_W32(tp, MAR0, *filterAddr++);
+    RTL_W32(tp, MAR1, *filterAddr);
 
     DebugLog("setMulticastList() <===\n");
 
@@ -990,7 +999,7 @@ IOReturn RTL8125::setWakeOnMagicPacket(bool active)
 
     if (tp->wol_opts && wolCapable) {
         tp->wol_enabled = (active) ? WOL_ENABLED : WOL_DISABLED;
-        
+
         DebugLog("WakeOnMagicPacket %s.\n", active ? "enabled" : "disabled");
 
         result = kIOReturnSuccess;
@@ -1007,7 +1016,7 @@ IOReturn RTL8125::getPacketFilters(const OSSymbol *group, UInt32 *filters) const
 
     DebugLog("getPacketFilters() ===>\n");
 
-    if ((group == gIOEthernetWakeOnLANFilterGroup) && linuxData.wol_opts && wolCapable) {
+    if ((group == gIOEthernetWakeOnLANFilterGroup) && wolCapable) {
         *filters = kIOEthernetWakeOnMagicPacket;
         DebugLog("kIOEthernetWakeOnMagicPacket added to filters.\n");
     } else {
@@ -1015,23 +1024,6 @@ IOReturn RTL8125::getPacketFilters(const OSSymbol *group, UInt32 *filters) const
     }
     
     DebugLog("getPacketFilters() <===\n");
-
-    return result;
-}
-
-/* Methods inherited from IOEthernetController. */
-IOReturn RTL8125::getHardwareAddress(IOEthernetAddress *addr)
-{
-    IOReturn result = kIOReturnError;
-    
-    DebugLog("getHardwareAddress() ===>\n");
-    
-    if (addr) {
-        bcopy(&currMacAddr.bytes, addr->bytes, kIOEthernetAddressSize);
-        result = kIOReturnSuccess;
-    }
-    
-    DebugLog("getHardwareAddress() <===\n");
 
     return result;
 }
@@ -1081,7 +1073,8 @@ IOReturn RTL8125::getMaxPacketSize(UInt32 * maxSize) const
     DebugLog("getMaxPacketSize() ===>\n");
         
     *maxSize = kMaxPacketSize;
-    DebugLog("Maximum packet size: %u\n", *maxSize);
+    
+    DebugLog("maxSize: %u, version_major: %u\n", *maxSize, version_major);
 
     DebugLog("getMaxPacketSize() <===\n");
     
@@ -1109,7 +1102,7 @@ IOReturn RTL8125::setMaxPacketSize(UInt32 maxSize)
         timerSource->cancelTimeout();
         
         tp->eee.tx_lpi_timer = mtu + ETH_HLEN + 0x20;
-        rtl812xRestart(tp);
+        rtl812xRestart();
         
         result = kIOReturnSuccess;
     }
@@ -1121,54 +1114,29 @@ IOReturn RTL8125::setMaxPacketSize(UInt32 maxSize)
 
 #pragma mark --- common interrupt methods ---
 
-void RTL8125::pciErrorInterrupt()
-{
-    UInt16 cmdReg = pciDevice->configRead16(kIOPCIConfigCommand);
-    UInt16 statusReg = pciDevice->configRead16(kIOPCIConfigStatus);
-    
-    DebugLog("PCI error: cmdReg=0x%x, statusReg=0x%x\n", cmdReg, statusReg);
-
-    cmdReg |= (kIOPCICommandSERR | kIOPCICommandParityError);
-    statusReg &= (kIOPCIStatusParityErrActive | kIOPCIStatusSERRActive | kIOPCIStatusMasterAbortActive | kIOPCIStatusTargetAbortActive | kIOPCIStatusTargetAbortCapable);
-    pciDevice->configWrite16(kIOPCIConfigCommand, cmdReg);
-    pciDevice->configWrite16(kIOPCIConfigStatus, statusReg);
-    
-    /* Reset the NIC in order to resume operation. */
-    rtl812xRestart(&linuxData);
-}
-
-#ifdef ENABLE_TX_NO_CLOSE
-
 void RTL8125::txInterrupt()
 {
     struct rtl8125_private *tp = &linuxData;
     mbuf_t m;
     UInt32 nextClosePtr = rtl812xGetHwCloPtr(tp);
-    UInt32 bytes = 0;
-    UInt32 descs = 0;
-    UInt32 n;
-    static int run = 0;
-    
-    n = ((nextClosePtr - txClosePtr0) & tp->MaxTxDescPtrMask);
-    
-    //DebugLog("txInterrupt() txClosePtr0: %u, nextClosePtr: %u, numDone: %u.\n", txClosePtr0, nextClosePtr, numDone);
-    
-    //n = min(txNextDescIndex - txDirtyDescIndex, n);
-    //txClosePtr0 += n;
+    UInt32 oldDirtyIndex = txDirtyDescIndex;
+    UInt32 numDone;
+
+    numDone = ((nextClosePtr - txClosePtr0) & tp->MaxTxDescPtrMask);
+
+#ifdef DEBUG_INTR
+    DebugLog("txInterrupt() numDone: %u.\n", numDone);
+#endif  /* DEBUG_INTR */
+
     txClosePtr0 = nextClosePtr;
-    
-    while (n-- > 0) {
-        m = txBufArray[txDirtyDescIndex].mbuf;
-        txBufArray[txDirtyDescIndex].mbuf = NULL;
-        
+
+    while (numDone-- > 0) {
+        m = txMbufArray[txDirtyDescIndex];
+        txMbufArray[txDirtyDescIndex] = NULL;
+
         if (m) {
             if (useAppleVTD)
                 txUnmapPacket();
-
-            descs += txBufArray[txDirtyDescIndex].numDescs;
-            bytes += txBufArray[txDirtyDescIndex].packetBytes;
-            txBufArray[txDirtyDescIndex].numDescs = 0;
-            txBufArray[txDirtyDescIndex].packetBytes = 0;
 
             freePacket(m, kDelayFree);
         }
@@ -1176,64 +1144,13 @@ void RTL8125::txInterrupt()
         OSIncrementAtomic(&txNumFreeDesc);
         ++txDirtyDescIndex &= kTxDescMask;
     }
-    if (bytes > 0) {
+    if (oldDirtyIndex != txDirtyDescIndex) {
         if (txNumFreeDesc > kTxQueueWakeTreshhold)
             netif->signalOutputThread();
         
         releaseFreePackets();
-        OSAddAtomic(descs, &totalDescs);
-        OSAddAtomic(bytes, &totalBytes);
-        run = 0;
-        //DebugLog("txInterrupt() packets: %u, bytes: %u.\n", descs, bytes);
-    } else if (!test_bit(__POLL_MODE, &stateFlags)) {
-        //DebugLog("txInterrupt() %d without packets. txNumFreeDesc: %u.\n", ++run, txNumFreeDesc);
     }
 }
-#else
-void RTL8125::txInterrupt()
-{
-    mbuf_t m;
-    SInt32 numDirty = kNumTxDesc - txNumFreeDesc;
-    UInt32 bytes = 0;
-    UInt32 descs = 0;
-    UInt32 descStatus;
-    
-    while (numDirty-- > 0) {
-        descStatus = OSSwapLittleToHostInt32(txDescArray[txDirtyDescIndex].opts1);
-        
-        if (descStatus & DescOwn)
-            break;
-        
-        m = txBufArray[txDirtyDescIndex].mbuf;
-        txBufArray[txDirtyDescIndex].mbuf = NULL;
-        
-        if (m) {
-            if (useAppleVTD)
-                txUnmapPacket();
-
-            descs += txBufArray[txDirtyDescIndex].numDescs;
-            bytes += txBufArray[txDirtyDescIndex].packetBytes;
-            txBufArray[txDirtyDescIndex].numDescs = 0;
-            txBufArray[txDirtyDescIndex].packetBytes = 0;
-
-            freePacket(m, kDelayFree);
-        }
-        txDescDoneCount++;
-        OSIncrementAtomic(&txNumFreeDesc);
-        ++txDirtyDescIndex &= kTxDescMask;
-    }
-    if (bytes > 0) {
-        if (txNumFreeDesc > kTxQueueWakeTreshhold)
-            netif->signalOutputThread();
-        
-        releaseFreePackets();
-        OSAddAtomic(descs, &totalDescs);
-        OSAddAtomic(bytes, &totalBytes);
-        
-        RTL_W16(&linuxData, TPPOLL_8125, BIT_0);
-    }
-}
-#endif  /* ENABLE_TX_NO_CLOSE */
 
 UInt32 RTL8125::rxInterrupt(IONetworkInterface *interface, uint32_t maxCount, IOMbufQueue *pollQueue, void *context)
 {
@@ -1369,12 +1286,149 @@ handle_pkt:
     return goodPkts;
 }
 
+void RTL8125::rtl812xCheckLinkStatus(struct rtl8125_private *tp)
+{
+    UInt64 now;
+    UInt32 status;
+    
+    status = RTL_R32(tp, PHYstatus);
+    
+    if ((status == 0xffffffff) || !(status & LinkStatus)) {
+        rtl812xLinkDownPatch(tp);
+        
+        /* Stop watchdog and statistics updates. */
+        timerSource->cancelTimeout();
+        setLinkDown();
+        
+        clearRxTxRings();
+    } else {
+        /* Get EEE mode. */
+        rtl812xGetEEEMode(tp);
+        
+        /* Get link speed, duplex and flow-control mode. */
+        if (status & (TxFlowCtrl | RxFlowCtrl)) {
+            tp->fcpause = rtl8125_fc_full;
+        } else {
+            tp->fcpause = rtl8125_fc_none;
+        }
+        if (status & _5000bpsF) {
+            tp->speed = SPEED_5000;
+            tp->duplex = DUPLEX_FULL;
+        } else if (status & (_2500bpsF | _5000bpsL)) {
+            tp->speed = SPEED_2500;
+            tp->duplex = DUPLEX_FULL;
+        } else if (status & (_1000bpsF | _2500bpsL | _1000bpsL)) {
+                tp->speed = SPEED_1000;
+                tp->duplex = DUPLEX_FULL;
+        } else if (status & _100bps) {
+            tp->speed = SPEED_100;
+            
+            if (status & FullDup) {
+                tp->duplex = DUPLEX_FULL;
+            } else {
+                tp->duplex = DUPLEX_HALF;
+            }
+        } else {
+            tp->speed = SPEED_10;
+            
+            if (status & FullDup) {
+                tp->duplex = DUPLEX_FULL;
+            } else {
+                tp->duplex = DUPLEX_HALF;
+            }
+        }
+        rtl812xLinkOnPatch(tp);
+
+        setLinkUp();
+        clock_get_uptime(&now);
+        timerSource->wakeAtTime(now + timerInterval);
+    }
+}
+/*
+void RTL8125::checkLinkStatus()
+{
+    struct rtl8125_private *tp = &linuxData;
+    UInt64 now;
+    UInt16 currLinkState;
+    
+    DebugLog("Link change interrupt: Check link status.\n");
+
+    currLinkState = RTL_R16(tp, PHYstatus);
+    
+    if (currLinkState & LinkStatus) {
+        // Get EEE mode.
+        eeeMode = getEEEMode();
+        
+        // Get link speed, duplex and flow-control mode.
+        if (currLinkState & (TxFlowCtrl | RxFlowCtrl)) {
+            flowCtl = kFlowControlOn;
+        } else {
+            flowCtl = kFlowControlOff;
+        }
+        if (currLinkState & _2500bpsF) {
+            speed = SPEED_2500;
+            duplex = DUPLEX_FULL;
+        } else if (currLinkState & _1000bpsF) {
+                speed = SPEED_1000;
+                duplex = DUPLEX_FULL;
+        } else if (currLinkState & _100bps) {
+            speed = SPEED_100;
+            
+            if (currLinkState & FullDup) {
+                duplex = DUPLEX_FULL;
+            } else {
+                duplex = DUPLEX_HALF;
+            }
+        } else {
+            speed = SPEED_10;
+            
+            if (currLinkState & FullDup) {
+                duplex = DUPLEX_FULL;
+            } else {
+                duplex = DUPLEX_HALF;
+            }
+        }
+        setupRTL8125();
+        
+        if (tp->mcfg == CFG_METHOD_2) {
+            if (RTL_R16(tp, PHYstatus) & FullDup)
+                RTL_W32(tp, TxConfig, (RTL_R32(tp, TxConfig) | (BIT_24 | BIT_25)) & ~BIT_19);
+            else
+                RTL_W32(tp, TxConfig, (RTL_R32(tp, TxConfig) | BIT_25) & ~(BIT_19 | BIT_24));
+        }
+
+        if ((tp->mcfg == CFG_METHOD_2 || tp->mcfg == CFG_METHOD_3 ||
+             tp->mcfg == CFG_METHOD_4 || tp->mcfg == CFG_METHOD_5) &&
+            (RTL_R16(tp, PHYstatus) & _10bps))
+                rtl8125_enable_eee_plus(tp);
+
+        setLinkUp();
+        clock_get_uptime(&now);
+        timerSource->wakeAtTime(now + timerInterval);
+
+        rtl8125_mdio_write(tp, 0x1F, 0x0000);
+        linuxData.phy_reg_anlpar = rtl8125_mdio_read(tp, MII_LPA);
+    } else {
+        tp->phy_reg_anlpar = 0;
+
+        if (tp->mcfg == CFG_METHOD_2 ||
+            tp->mcfg == CFG_METHOD_3 ||
+            tp->mcfg == CFG_METHOD_4 ||
+            tp->mcfg == CFG_METHOD_5)
+                rtl8125_disable_eee_plus(tp);
+
+        // Stop watchdog and statistics updates.
+        timerSource->cancelTimeout();
+        setLinkDown();
+    }
+}
+*/
 void RTL8125::interruptOccurred(OSObject *client, IOInterruptEventSource *src, int count)
 {
     struct rtl8125_private *tp = &linuxData;
-    UInt32 rxPackets = 0;
+    UInt32 packets;
     UInt32 status;
-
+    
     status = RTL_R32(tp, ISR0_8125);
     
     //DebugLog("interruptHandler: status = 0x%x.\n", status);
@@ -1386,50 +1440,45 @@ void RTL8125::interruptOccurred(OSObject *client, IOInterruptEventSource *src, i
     RTL_W32(tp, IMR0_8125, 0x0000);
     RTL_W32(tp, ISR0_8125, (status & ~RxFIFOOver));
 
-    if (status & SYSErr) {
-        pciErrorInterrupt();
-        goto done;
-    }
     if (!test_bit(__POLL_MODE, &stateFlags) &&
         !test_and_set_bit(__POLLING, &stateFlags)) {
         /* Rx interrupt */
         if (status & (RxOK | RxDescUnavail)) {
-            rxPackets = rxInterrupt(netif, kNumRxDesc, NULL, NULL);
+            packets = rxInterrupt(netif, kNumRxDesc, NULL, NULL);
             
-            if (rxPackets)
+            if (packets)
                 netif->flushInputQueue();
             
-#ifdef DEBUG_INTR
-            if (rxPackets > maxRxPkt)
-                maxRxPkt = rxPackets;
-#endif  /* DEBUG_INTR */
-
             etherStats->dot3RxExtraEntry.interrupts++;
         }
         /* Tx interrupt */
-        if (status & (TxOK)) {
+        if (status & (TxOK | RxOK | PCSTimeout)) {
             txInterrupt();
             
-            etherStats->dot3TxExtraEntry.interrupts++;
+            if (status & TxOK)
+                etherStats->dot3TxExtraEntry.interrupts++;
         }
-        if (status & (TxOK | RxOK | PCSTimeout))
-            timerValue = updateIntrMode(tp, status);
-
-        RTL_W32(tp, TIMER_INT0_8125, timerValue);
-
-        if (timerValue)
-            RTL_W32(tp, TCTR0_8125, timerValue);
-
+        if (status & (TxOK | RxOK)) {
+            RTL_W32(tp, TIMER_INT0_8125, 0x5000);
+            RTL_W32(tp, TCTR0_8125, 0x5000);
+            intrMask = intrMaskTimer;
+        } else if (status & PCSTimeout) {
+            RTL_W32(tp, TIMER_INT0_8125, 0x0000);
+            intrMask = intrMaskRxTx;
+        }
+#ifdef DEBUG_INTR
+        if (status & PCSTimeout)
+            tmrInterrupts++;
+#endif
+        
         clear_bit(__POLLING, &stateFlags);
     }
     if (status & LinkChg) {
         rtl812xCheckLinkStatus(tp);
-        timerValue = 0;
+        //checkLinkStatus();
+        RTL_W32(tp, TIMER_INT0_8125, 0x000);
         intrMask = intrMaskRxTx;
-
-        RTL_W32(tp, TIMER_INT0_8125, timerValue);
     }
-    
 done:
     RTL_W32(tp, IMR0_8125, intrMask);
 }
@@ -1442,13 +1491,13 @@ bool RTL8125::txHangCheck()
     if ((txDescDoneCount == txDescDoneLast) && (txNumFreeDesc < kNumTxDesc)) {
         if (++deadlockWarn == kTxCheckTreshhold) {
             /* Some members of the RTL8125 family seem to be prone to lose
-             * transmitter interrupts. In order to avoid false positives
+             * transmitter rinterrupts. In order to avoid false positives
              * when trying to detect transmitter deadlocks, check the
              * transmitter ring once for completed descriptors before we
              * assume a deadlock.
              */
             DebugLog("Warning: Tx timeout, ISR0=0x%x, IMR0=0x%x, polling=%u.\n", RTL_R32(tp, ISR0_8125),
-                     RTL_R32(tp, IMR0_8125), stateFlags & __POLL_MODE_M);
+                     RTL_R32(tp, IMR0_8125), test_bit(__POLL_MODE, &stateFlags));
             etherStats->dot3TxExtraEntry.timeouts++;
             txInterrupt();
         } else if (deadlockWarn >= kTxDeadlockTreshhold) {
@@ -1464,7 +1513,7 @@ bool RTL8125::txHangCheck()
             IOLog("Tx stalled? Resetting chipset. ISR0=0x%x, IMR0=0x%x.\n", RTL_R32(tp, ISR0_8125),
                   RTL_R32(tp, IMR0_8125));
             etherStats->dot3TxExtraEntry.resets++;
-            rtl812xRestart(tp);
+            rtl812xRestart();
             deadlock = true;
         }
     } else {
@@ -1477,8 +1526,6 @@ bool RTL8125::txHangCheck()
 
 IOReturn RTL8125::setInputPacketPollingEnable(IONetworkInterface *interface, bool enabled)
 {
-    struct rtl8125_private *tp = &linuxData;
-
     //DebugLog("setInputPacketPollingEnable() ===>\n");
 
     if (test_bit(__ENABLED, &stateFlags)) {
@@ -1490,13 +1537,8 @@ IOReturn RTL8125::setInputPacketPollingEnable(IONetworkInterface *interface, boo
             clear_bit(__POLL_MODE, &stateFlags);
 
             intrMask = intrMaskRxTx;
-            
-            /* Clear per interrupt tx counters. */
-            totalDescs = 0;
-            totalBytes = 0;
         }
-        timerValue = 0;
-        RTL_W32(tp, IMR0_8125, intrMask);
+        RTL_W32(&linuxData, IMR0_8125, intrMask);
     }
     DebugLog("Input polling %s.\n", enabled ? "enabled" : "disabled");
 
@@ -1516,7 +1558,7 @@ void RTL8125::pollInputPackets(IONetworkInterface *interface, uint32_t maxCount,
             rxInterruptVTD(interface, maxCount, pollQueue, context);
         else
             rxInterrupt(interface, maxCount, pollQueue, context);
-        
+
         /* Finally cleanup the transmitter ring. */
         txInterrupt();
         
@@ -1525,7 +1567,219 @@ void RTL8125::pollInputPackets(IONetworkInterface *interface, uint32_t maxCount,
     //DebugLog("pollInputPackets() <===\n");
 }
 
-void RTL8125::timerAction(IOTimerEventSource *timer)
+#pragma mark --- hardware specific methods ---
+
+void RTL8125::getChecksumResult(mbuf_t m, UInt32 status1, UInt32 status2)
+{
+    mbuf_csum_performed_flags_t performed = 0;
+    UInt32 value = 0;
+
+    if ((status2 & RxV4F) && !(status1 & RxIPF))
+        performed |= (MBUF_CSUM_DID_IP | MBUF_CSUM_IP_GOOD);
+
+    if (((status1 & RxTCPT) && !(status1 & RxTCPF)) ||
+        ((status1 & RxUDPT) && !(status1 & RxUDPF))) {
+        performed |= (MBUF_CSUM_DID_DATA | MBUF_CSUM_PSEUDO_HDR);
+        value = 0xffff; // fake a valid checksum value
+    }
+    if (performed)
+        mbuf_set_csum_performed(m, performed, value);
+}
+
+void RTL8125::setLinkUp()
+{
+    struct rtl8125_private *tp = &linuxData;
+    const char *speedName;
+    const char *duplexName;
+    const char *flowName;
+    const char *eeeName;
+    UInt64 mediumSpeed;
+    UInt32 mediumIndex = MIDX_AUTO;
+    UInt32 spd = tp->speed;
+    UInt32 fc = tp->fcpause;
+    bool eee;
+    
+    eee = tp->eee.eee_active;
+    eeeName = eeeNames[kEEETypeNo];
+
+    /* Get link speed, duplex and flow-control mode. */
+    if (fc == rtl8125_fc_full) {
+        flowName = onFlowName;
+    } else {
+        flowName = offFlowName;
+    }
+    if (spd == SPEED_5000) {
+        mediumSpeed = kSpeed5000MBit;
+        speedName = speed5GName;
+        duplexName = duplexFullName;
+       
+        if (fc == rtl8125_fc_full) {
+            if (eee) {
+                mediumIndex = MIDX_5000FDFC_EEE;
+                eeeName = eeeNames[kEEETypeYes];
+            } else {
+                mediumIndex = MIDX_5000FDFC;
+                eeeName = eeeNames[kEEETypeNo];
+            }
+        } else {
+            if (eee) {
+                mediumIndex = MIDX_5000FD_EEE;
+                eeeName = eeeNames[kEEETypeYes];
+            } else {
+                mediumIndex = MIDX_5000FD;
+                eeeName = eeeNames[kEEETypeNo];
+            }
+        }
+    } else if (spd == SPEED_2500) {
+        mediumSpeed = kSpeed2500MBit;
+        speedName = speed25GName;
+        duplexName = duplexFullName;
+       
+        if (fc == rtl8125_fc_full) {
+            if (eee) {
+                mediumIndex = MIDX_2500FDFC_EEE;
+                eeeName = eeeNames[kEEETypeYes];
+            } else {
+                mediumIndex = MIDX_2500FDFC;
+                eeeName = eeeNames[kEEETypeNo];
+            }
+        } else {
+            if (eee) {
+                mediumIndex = MIDX_2500FD_EEE;
+                eeeName = eeeNames[kEEETypeYes];
+            } else {
+                mediumIndex = MIDX_2500FD;
+                eeeName = eeeNames[kEEETypeNo];
+            }
+        }
+    } else if (spd == SPEED_1000) {
+        mediumSpeed = kSpeed1000MBit;
+        speedName = speed1GName;
+        duplexName = duplexFullName;
+       
+        if (fc == rtl8125_fc_full) {
+            if (eee) {
+                mediumIndex = MIDX_1000FDFC_EEE;
+                eeeName = eeeNames[kEEETypeYes];
+            } else {
+                mediumIndex = MIDX_1000FDFC;
+            }
+        } else {
+            if (eee) {
+                mediumIndex = MIDX_1000FD_EEE;
+                eeeName = eeeNames[kEEETypeYes];
+            } else {
+                mediumIndex = MIDX_1000FD;
+            }
+        }
+    } else if (spd == SPEED_100) {
+        mediumSpeed = kSpeed100MBit;
+        speedName = speed100MName;
+        
+        if (tp->duplex == DUPLEX_FULL) {
+            duplexName = duplexFullName;
+            
+            if (fc == rtl8125_fc_full) {
+                if (eee) {
+                    mediumIndex =  MIDX_100FDFC_EEE;
+                    eeeName = eeeNames[kEEETypeYes];
+                } else {
+                    mediumIndex = MIDX_100FDFC;
+                }
+            } else {
+                if (eee) {
+                    mediumIndex =  MIDX_100FD_EEE;
+                    eeeName = eeeNames[kEEETypeYes];
+                } else {
+                    mediumIndex = MIDX_100FD;
+                }
+            }
+        } else {
+            mediumIndex = MIDX_100HD;
+            duplexName = duplexHalfName;
+        }
+    } else {
+        mediumSpeed = kSpeed10MBit;
+        speedName = speed10MName;
+        
+        if (tp->duplex == DUPLEX_FULL) {
+            mediumIndex = MIDX_10FD;
+            duplexName = duplexFullName;
+        } else {
+            mediumIndex = MIDX_10HD;
+            duplexName = duplexHalfName;
+        }
+    }
+    rxPacketHead = rxPacketTail = NULL;
+    rxPacketSize = 0;
+
+    /* Start hardware. */
+    RTL_W8(tp, ChipCmd, CmdTxEnb | CmdRxEnb);
+
+    set_bit(__LINK_UP, &stateFlags);
+    setLinkStatus(kIONetworkLinkValid | kIONetworkLinkActive, mediumTable[mediumIndex], mediumSpeed, NULL);
+
+    /* Start output thread, statistics update and watchdog. Also
+     * update poll params according to link speed.
+     */
+    bzero(&pollParms, sizeof(IONetworkPacketPollingParameters));
+    
+    if (spd == SPEED_10) {
+        pollParms.lowThresholdPackets = 2;
+        pollParms.highThresholdPackets = 8;
+        pollParms.lowThresholdBytes = 0x400;
+        pollParms.highThresholdBytes = 0x1800;
+        pollParms.pollIntervalTime = 1000000;  /* 1ms */
+    } else {
+        pollParms.lowThresholdPackets = 10;
+        pollParms.highThresholdPackets = 40;
+        pollParms.lowThresholdBytes = 0x1000;
+        pollParms.highThresholdBytes = 0x10000;
+        
+        if (spd == SPEED_5000)
+            pollParms.pollIntervalTime = (mtu < 4076) ? pollTime5G : (pollTime5G + 10000);
+        else if (spd == SPEED_2500)
+            pollParms.pollIntervalTime = pollTime2G;
+        else if (spd == SPEED_1000)
+            pollParms.pollIntervalTime = 170000;   /* 170µs */
+        else
+            pollParms.pollIntervalTime = 1000000;  /* 1ms */
+    }
+    netif->setPacketPollingParameters(&pollParms, 0);
+    DebugLog("pollIntervalTime: %lluµs\n", (pollParms.pollIntervalTime / 1000));
+
+    netif->startOutputThread();
+
+    IOLog("Link up on en%u, %s, %s, %s%s\n", netif->getUnitNumber(), speedName, duplexName, flowName, eeeName);
+}
+
+void RTL8125::setLinkDown()
+{
+    struct rtl8125_private *tp = &linuxData;
+    
+    deadlockWarn = 0;
+
+    /* Stop output thread and flush output queue. */
+    netif->stopOutputThread();
+    netif->flushOutputQueue();
+
+    /* Update link status. */
+    clear_mask((__LINK_UP_M | __POLL_MODE_M), &stateFlags);
+    setLinkStatus(kIONetworkLinkValid);
+
+    rtl812xLinkDownPatch(tp);
+    clearRxTxRings();
+
+    /* Enable link change interrupt. */
+    intrMask = intrMaskRxTx;
+    RTL_W32(tp, IMR0_8125, intrMask);
+
+    rtl812xSetPhyMedium(tp, tp->autoneg, tp->speed, tp->duplex, tp->advertising);
+    
+    IOLog("Link down on en%u\n", netif->getUnitNumber());
+}
+
+void RTL8125::timerActionRTL8125(IOTimerEventSource *timer)
 {
     struct rtl8125_private *tp = &linuxData;
     UInt64 now;
@@ -1533,18 +1787,15 @@ void RTL8125::timerAction(IOTimerEventSource *timer)
     clock_get_uptime(&now);
 
 #ifdef DEBUG_INTR
-    UInt32 tmrIntr = tmrInterrupts - lastTmrIntrupts;
-    UInt32 txIntr = etherStats->dot3TxExtraEntry.interrupts - lastTxIntrupts;
     UInt32 rxIntr = etherStats->dot3RxExtraEntry.interrupts - lastRxIntrupts;
+    UInt32 txIntr = etherStats->dot3TxExtraEntry.interrupts - lastTxIntrupts;
+    UInt32 tmrIntr = tmrInterrupts - lastTmrIntrupts;
 
-    lastTmrIntrupts = tmrInterrupts;
     lastRxIntrupts = etherStats->dot3RxExtraEntry.interrupts;
     lastTxIntrupts = etherStats->dot3TxExtraEntry.interrupts;
-
-    IOLog("timer: %u, tx: %u, rx: %u, txPkt: %u, rxPkt: %u\n", tmrIntr, txIntr, rxIntr, maxTxPkt, maxRxPkt);
+    lastTmrIntrupts = tmrInterrupts;
     
-    maxRxPkt = 0;
-    maxTxPkt = 0;
+    IOLog("rxIntr/s: %u, txIntr/s: %u, timerIntr/s: %u\n", rxIntr, txIntr, tmrIntr);
 #endif
     
     if (!test_bit(__LINK_UP, &stateFlags))
@@ -1557,10 +1808,55 @@ void RTL8125::timerAction(IOTimerEventSource *timer)
     if (txHangCheck())
         goto done;
     
-    timerSource->wakeAtTime(now + timerInterval);
-    
+    timerSource->wakeAtTime(now +timerInterval);
+
 done:
     txDescDoneLast = txDescDoneCount;
+    
+}
+
+#pragma mark --- statistics update methods ---
+
+void RTL8125::rtl812xDumpTallyCounter(struct rtl8125_private *tp)
+{
+    UInt32 cmd;
+
+    RTL_W32(tp, CounterAddrHigh, (statPhyAddr >> 32));
+    cmd = statPhyAddr & 0x00000000ffffffff;
+    RTL_W32(tp, CounterAddrLow, cmd);
+    RTL_W32(tp, CounterAddrLow, cmd | CounterDump);
+}
+
+void RTL8125::runStatUpdateThread(thread_call_param_t param0)
+{
+    ((RTL8125 *) param0)->statUpdateThread();
+}
+
+void RTL8125::statUpdateThread()
+{
+    struct rtl8125_private *tp = &linuxData;
+    UInt32 sgColl, mlColl;
+
+    if (!(RTL_R32(tp, CounterAddrLow) & CounterDump)) {
+        netStats->inputPackets = OSSwapLittleToHostInt64(statData->rxPackets) & 0x00000000ffffffff;
+        netStats->inputErrors = OSSwapLittleToHostInt32(statData->rxErrors);
+        netStats->outputPackets = OSSwapLittleToHostInt64(statData->txPackets) & 0x00000000ffffffff;
+        netStats->outputErrors = OSSwapLittleToHostInt32(statData->txErrors);
+        
+        sgColl = OSSwapLittleToHostInt32(statData->txOneCollision);
+        mlColl = OSSwapLittleToHostInt32(statData->txMultiCollision);
+        netStats->collisions = sgColl + mlColl;
+        
+        etherStats->dot3StatsEntry.singleCollisionFrames = sgColl;
+        etherStats->dot3StatsEntry.multipleCollisionFrames = mlColl;
+        etherStats->dot3StatsEntry.alignmentErrors = OSSwapLittleToHostInt16(statData->alignErrors);
+        etherStats->dot3StatsEntry.missedFrames = OSSwapLittleToHostInt16(statData->rxMissed);
+        etherStats->dot3TxExtraEntry.underruns = OSSwapLittleToHostInt16(statData->txUnderun);
+        
+        etherStats->dot3RxExtraEntry.frameTooShorts = OSSwapLittleToHostInt32(statData->rxRunt);
+        etherStats->dot3RxExtraEntry.overruns = OSSwapLittleToHostInt32(statData->rxMacMissed);
+        etherStats->dot3RxExtraEntry.resourceErrors = OSSwapLittleToHostInt32(statData->rxMacError);
+    }
 }
 
 #pragma mark --- miscellaneous functions ---
@@ -1636,6 +1932,8 @@ static inline void prepareTSO6(mbuf_t m, UInt32 *tcpOffset, UInt32 *mss)
     if (*mss > MSS_MAX)
         *mss = MSS_MAX;
 }
+
+static unsigned const ethernet_polynomial = 0x04c11db7U;
 
 static inline u32 ether_crc(int length, unsigned char *data)
 {

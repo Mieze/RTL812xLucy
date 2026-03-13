@@ -6,7 +6,7 @@
 //
 // This driver is based on version 9.016.01 of Realtek's r8125 driver.
 
-#include "rtl812x.h"
+#include "rtl812xx.h"
 #include "linux/bitsperlong.h"
 #include "linux/bitops.h"
 

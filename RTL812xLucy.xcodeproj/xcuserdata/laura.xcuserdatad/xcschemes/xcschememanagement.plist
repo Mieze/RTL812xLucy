@@ -7,7 +7,12 @@
 		<key>RTL8125Lucy.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>5</integer>
+			<integer>1</integer>
+		</dict>
+		<key>RTL812xLucy copy.xcscheme_^#shared#^_</key>
+		<dict>
+			<key>orderHint</key>
+			<integer>6</integer>
 		</dict>
 		<key>RTL812xLucy.xcscheme_^#shared#^_</key>
 		<dict>
