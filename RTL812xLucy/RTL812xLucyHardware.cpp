@@ -364,6 +364,26 @@ bool RTL8125::rtl812xInit()
 
     rtl8125_init_software_variable(tp);
     
+    switch (tp->mcfg) {
+        case CFG_METHOD_4:
+        case CFG_METHOD_5:
+        case CFG_METHOD_7:
+        case CFG_METHOD_8:
+        case CFG_METHOD_9:
+        case CFG_METHOD_10:
+        case CFG_METHOD_11:
+        case CFG_METHOD_12:
+        case CFG_METHOD_13:
+        case CFG_METHOD_31:
+        case CFG_METHOD_32:
+        case CFG_METHOD_33:
+            hasSensor = true;
+            break;
+            
+        default:
+            hasSensor = false;
+            break;
+    }
     /* Setup lpi timer. */
     tp->eee.tx_lpi_timer = mtu + ETH_HLEN + 0x20;
 
@@ -1096,4 +1116,25 @@ void RTL8125::rtl812xSetMrrs(struct rtl8125_private *tp, UInt8 setting)
     devctl &= ~0x70;
     devctl |= setting;
     pciDevice->extendedConfigWrite8(0x79, devctl);
+}
+
+IOReturn RTL8125::readThermalSensor(OSObject *owner, void *arg1, void *arg2, void *arg3, void *arg4)
+{
+    RTL8125 *me = OSDynamicCast(RTL8125, owner);
+    UInt32 *value = (UInt32 *)arg1;
+    u16 ts_digout;
+
+    if (me) {
+        ts_digout = mdio_direct_read_phy_ocp(&me->linuxData, 0xBD84);
+        ts_digout &= 0x3ff;
+        
+        //DebugLog("Raw sensor value: %u\n", ts_digout);
+
+        if (ts_digout <= 512) {
+            *value = ts_digout / 2;
+        } else {
+            *value = (512 - (ts_digout - 512)) / 2;
+        }
+    }
+    return kIOReturnSuccess;
 }

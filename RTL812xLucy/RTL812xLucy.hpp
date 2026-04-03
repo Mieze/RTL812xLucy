@@ -18,6 +18,10 @@
 * This driver is based on Realtek's r8125 Linux driver (9.003.04).
 */
 
+#ifndef RTL812xEthernet_hpp
+#define RTL812xEthernet_hpp
+
+#include "rtl812x_hw.h"
 #include "rtl812xx.h"
 #include "rtl812x_dash.h"
 #include "RTL8125LucyRxPool.hpp"
@@ -137,50 +141,6 @@ typedef struct RtlTxDesc {
 #endif  /* USE_NEW_TX_DESC */
 } RtlTxDesc;
 
-/* RTL8125's statistics dump data structure */
-typedef struct RtlStatData {
-    UInt64 txPackets;
-    UInt64 rxPackets;
-    UInt64 txErrors;
-    UInt32 rxErrors;
-    UInt16 rxMissed;
-    UInt16 alignErrors;
-    UInt32 txOneCollision;
-    UInt32 txMultiCollision;
-    UInt64 rxUnicast;
-    UInt64 rxBroadcast;
-    UInt32 rxMulticast;
-    UInt16 txAborted;
-    UInt16 txUnderun;
-    /* new since RTL8125 */
-    UInt64 txOctets;
-    UInt64 rxOctets;
-    UInt64 rxMulticast64;
-    UInt64 txUnicast64;
-    UInt64 txBroadcast64;
-    UInt64 txMulticast64;
-    UInt32 txPauseOn;
-    UInt32 txPauseOff;
-    UInt32 txPauseAll;
-    UInt32 txDeferred;
-    UInt32 txLateCollision;
-    UInt32 txAllCollision;
-    UInt32 txAborted32;
-    UInt32 alignErrors32;
-    UInt32 rxFrame2Long;
-    UInt32 rxRunt;
-    UInt32 rxPauseOn;
-    UInt32 rxPauseOff;
-    UInt32 rxPauseAll;
-    UInt32 rxUnknownOpcode;
-    UInt32 rxMacError;
-    UInt32 txUnderrun32;
-    UInt32 rxMacMissed;
-    UInt32 rxTcamDropped;
-    UInt32 tdu;
-    UInt32 rdu;
-} RtlStatData;
-
 #define kTransmitQueueCapacity  1024
 
 /* With up to 32 segments we should be on the save side. */
@@ -212,7 +172,6 @@ typedef struct RtlStatData {
 #define kRxMemBatchSize (kNumRxDesc / kNumRxMemDesc)
 #define kRxMemDescMask  (kRxMemBatchSize - 1)
 #define kRxMemBaseMask  ~kRxMemDescMask
-
 
 /* This is the receive buffer size (must be large enough to hold a packet). */
 #define kRxBufferSize   PAGE_SIZE
@@ -402,6 +361,10 @@ public:
     virtual IOReturn getMaxPacketSize(UInt32 * maxSize) const override;
     virtual IOReturn setMaxPacketSize(UInt32 maxSize) override;
     
+    virtual IOReturn newUserClient(task_t task, void *securityID, UInt32 type, IOUserClient **handler) override;
+    UInt32 getTemperature();
+    void getHwStatistics(RtlStatData *hwStats);
+    
 private:
     bool initPCIConfigSpace(IOPCIDevice *provider);
     void setupASPM(IOPCIDevice *provider, bool allowL0s, bool allowL1);
@@ -450,6 +413,7 @@ private:
     void rtl812xLinkOnPatch(struct rtl8125_private *tp);
     UInt32 rtl812xGetHwCloPtr(struct rtl8125_private *tp);
     void rtl812xDoorbell(struct rtl8125_private *tp, UInt32 txTailPtr);
+    static IOReturn readThermalSensor(OSObject *owner, void *arg1, void *arg2, void *arg3, void *arg4);
 
     void rtl812xDumpTallyCounter(struct rtl8125_private *tp);
     static void runStatUpdateThread(thread_call_param_t param0);
@@ -566,6 +530,7 @@ private:
     bool enableTSO4;
     bool enableTSO6;
     bool useAppleVTD;
+    bool hasSensor;
     
 #ifdef DEBUG_INTR
     UInt32 tmrInterrupts;
@@ -574,3 +539,5 @@ private:
     UInt32 lastTmrIntrupts;
 #endif
 };
+
+#endif  /* RTL812xEthernet_hpp */

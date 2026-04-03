@@ -19,6 +19,7 @@
 */
 
 #include "RTL812xLucy.hpp"
+#include "RTL812xUserClient.hpp"
 
 static const char *onName = "enabled";
 static const char *offName = "disabled";
@@ -751,4 +752,57 @@ void RTL8125::discardPacketFragment()
     
     rxPacketHead = rxPacketTail = NULL;
     rxPacketSize = 0;
+}
+
+IOReturn RTL8125::newUserClient(task_t task, void *securityID, UInt32 type, IOUserClient **handler)
+{
+    RTL812xUserClient *client;
+    IOReturn result;
+    
+    
+    if (type != kRTL812xMagicNumber) {
+        result = super::newUserClient(task, securityID, type, handler);
+    } else {
+        *handler = NULL;
+        
+        result = IOUserClient::clientHasPrivilege(task, kIOClientPrivilegeAdministrator );
+        
+        if (result != kIOReturnSuccess) {
+            IOLog("Task is not privileged to call newUserClient().\n");
+            result = kIOReturnNotPrivileged;
+            goto done;
+        }
+
+        /* Instantiate a new client for the requesting task. */
+        client = RTL812xUserClient::withTask(task);
+
+        if (!client) {
+            IOLog("Failed to create RTL812xUserClient.\n");
+            result = kIOReturnError;
+            goto done;
+        }
+        if (!client->attach(this)) {
+            IOLog("Failed to attach RTL812xUserClient.\n");
+            result = kIOReturnError;
+            goto error_attach;
+        }
+        if (!client->start(this)) {
+            IOLog("Failed to start RTL812xUserClient.\n");
+            result = kIOReturnError;
+            goto error_start;
+        }
+        result = kIOReturnSuccess;
+        *handler = client;
+    }
+
+done:
+    return result;
+
+error_start:
+    client->detach(this);
+    
+error_attach:
+    client->release();
+    client = NULL;
+    goto done;
 }

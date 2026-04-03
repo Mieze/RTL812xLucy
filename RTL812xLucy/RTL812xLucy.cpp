@@ -227,6 +227,7 @@ bool RTL8125::init(OSDictionary *properties)
         enableTSO4 = false;
         enableTSO6 = false;
         useAppleVTD = false;
+        hasSensor = false;
         pciPMCtrlOffset = 0;
         memset(fallBackMacAddr.bytes, 0, kIOEthernetAddressSize);
         nanoseconds_to_absolutetime(kStatDelayTime, &statDelay);
@@ -1856,6 +1857,63 @@ void RTL8125::statUpdateThread()
         etherStats->dot3RxExtraEntry.frameTooShorts = OSSwapLittleToHostInt32(statData->rxRunt);
         etherStats->dot3RxExtraEntry.overruns = OSSwapLittleToHostInt32(statData->rxMacMissed);
         etherStats->dot3RxExtraEntry.resourceErrors = OSSwapLittleToHostInt32(statData->rxMacError);
+    }
+}
+
+UInt32 RTL8125::getTemperature()
+{
+    UInt32 value;
+    
+    if (hasSensor)
+        commandGate->runAction(readThermalSensor, &value);
+    else
+        value = kInvalidTemp;
+    
+    return value;
+}
+
+void RTL8125::getHwStatistics(RtlStatData *hwStats)
+{
+    if (statData && hwStats) {
+        hwStats->txPackets = OSSwapLittleToHostInt64(statData->txPackets);
+        hwStats->rxPackets = OSSwapLittleToHostInt64(statData->rxPackets);
+        hwStats->txErrors = OSSwapLittleToHostInt64(statData->txErrors);
+        hwStats->rxErrors = OSSwapLittleToHostInt32(statData->rxErrors);
+        hwStats->rxMissed = OSSwapLittleToHostInt16(statData->rxMissed);
+        hwStats->alignErrors = OSSwapLittleToHostInt16(statData->alignErrors);
+        hwStats->txOneCollision = OSSwapLittleToHostInt32(statData->txOneCollision);
+        hwStats->txMultiCollision = OSSwapLittleToHostInt32(statData->txMultiCollision);
+        hwStats->rxUnicast = OSSwapLittleToHostInt64(statData->rxUnicast);
+        hwStats->rxBroadcast = OSSwapLittleToHostInt64(statData->rxBroadcast);
+        hwStats->rxMulticast = OSSwapLittleToHostInt32(statData->rxMulticast);
+        hwStats->txAborted = OSSwapLittleToHostInt16(statData->txAborted);
+        hwStats->txUnderun = OSSwapLittleToHostInt16(statData->txUnderun);
+        hwStats->txOctets = OSSwapLittleToHostInt64(statData->txOctets);
+        hwStats->rxOctets = OSSwapLittleToHostInt64(statData->rxOctets);
+        hwStats->rxMulticast64 = OSSwapLittleToHostInt64(statData->rxMulticast64);
+        hwStats->txUnicast64 = OSSwapLittleToHostInt64(statData->txUnicast64);
+        hwStats->txBroadcast64 = OSSwapLittleToHostInt64(statData->txBroadcast64);
+        hwStats->txMulticast64 = OSSwapLittleToHostInt64(statData->txMulticast64);
+        hwStats->txPauseOn = OSSwapLittleToHostInt32(statData->txPauseOn);
+        hwStats->txPauseOff = OSSwapLittleToHostInt32(statData->txPauseOff);
+        hwStats->txPauseAll = OSSwapLittleToHostInt32(statData->txPauseAll);
+        hwStats->txDeferred = OSSwapLittleToHostInt32(statData->txDeferred);
+        hwStats->txLateCollision = OSSwapLittleToHostInt32(statData->txLateCollision);
+        hwStats->txAllCollision = OSSwapLittleToHostInt32(statData->txAllCollision);
+        hwStats->txAborted32 = OSSwapLittleToHostInt32(statData->txAborted32);
+        hwStats->alignErrors32 = OSSwapLittleToHostInt32(statData->alignErrors32);
+        hwStats->rxFrame2Long = OSSwapLittleToHostInt32(statData->rxFrame2Long);
+        hwStats->rxRunt = OSSwapLittleToHostInt32(statData->rxRunt);
+        hwStats->rxPauseOn = OSSwapLittleToHostInt32(statData->rxPauseOn);
+        hwStats->rxPauseOff = OSSwapLittleToHostInt32(statData->rxPauseOff);
+        hwStats->rxPauseAll = OSSwapLittleToHostInt32(statData->rxPauseAll);
+        hwStats->rxUnknownOpcode = OSSwapLittleToHostInt32(statData->rxUnknownOpcode);
+        hwStats->rxMacError = OSSwapLittleToHostInt32(statData->rxMacError);
+        hwStats->txUnderrun32 = OSSwapLittleToHostInt32(statData->txUnderrun32);
+        hwStats->rxMacMissed = OSSwapLittleToHostInt32(statData->rxMacMissed);
+        hwStats->rxTcamDropped = OSSwapLittleToHostInt32(statData->rxTcamDropped);
+        hwStats->tdu = OSSwapLittleToHostInt32(statData->tdu);
+        hwStats->rdu = OSSwapLittleToHostInt32(statData->rdu);
     }
 }
 
