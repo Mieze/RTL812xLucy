@@ -28,15 +28,16 @@ bool RTL8125::initPCIConfigSpace(IOPCIDevice *provider)
 {
     IOByteCount pmCapOffset;
     UInt32 pcieLinkCap;
+    UInt16 pcieLinkCtl;
     UInt16 cmdReg;
     UInt16 pmCap;
     bool result = false;
     
     /* Get vendor and device info. */
-    pciDeviceData.vendor = provider->configRead16(kIOPCIConfigVendorID);
-    pciDeviceData.device = provider->configRead16(kIOPCIConfigDeviceID);
-    pciDeviceData.subsystem_vendor = provider->configRead16(kIOPCIConfigSubSystemVendorID);
-    pciDeviceData.subsystem_device = provider->configRead16(kIOPCIConfigSubSystemID);
+    pciDeviceData.vendor = provider->extendedConfigRead16(kIOPCIConfigVendorID);
+    pciDeviceData.device = provider->extendedConfigRead16(kIOPCIConfigDeviceID);
+    pciDeviceData.subsystem_vendor = provider->extendedConfigRead16(kIOPCIConfigSubSystemVendorID);
+    pciDeviceData.subsystem_device = provider->extendedConfigRead16(kIOPCIConfigSubSystemID);
     
     /* Setup power management. */
     if (provider->extendedFindPCICapability(kIOPCIPowerManagementCapability, &pmCapOffset)) {
@@ -56,12 +57,14 @@ bool RTL8125::initPCIConfigSpace(IOPCIDevice *provider)
     /* Get PCIe link information. */
     if (provider->extendedFindPCICapability(kIOPCIPCIExpressCapability, &pcieCapOffset)) {
         pcieLinkCap = provider->extendedConfigRead32(pcieCapOffset + kIOPCIELinkCapability);
+        pcieLinkCtl = provider->extendedConfigRead16(pcieCapOffset + kIOPCIELinkControl);
+
         DebugLog("PCIe link capability: 0x%08x.\n", pcieLinkCap);
+        DebugLog("PCIe link control: 0x%04x.\n", pcieLinkCtl);
     }
     /* Enable the device. */
     cmdReg = provider->configRead16(kIOPCIConfigCommand);
-    cmdReg &= ~kIOPCICommandIOSpace;
-    cmdReg |= (kIOPCICommandBusMaster | kIOPCICommandMemorySpace | kIOPCICommandMemWrInvalidate);
+    cmdReg |= (kIOPCICommandBusMaster | kIOPCICommandMemorySpace | kIOPCICommandIOSpace);
     provider->configWrite16(kIOPCIConfigCommand, cmdReg);
     
     baseMap = provider->mapDeviceMemoryWithRegister(kIOPCIConfigBaseAddress2, kIOMapInhibitCache);
@@ -357,10 +360,10 @@ bool RTL8125::rtl812xInit()
     rtl8125_get_bios_setting(tp);
     
     if (!rtl8125_aspm_is_safe(tp)) {
-        IOLog("Hardware doesn't support ASPM properly. Disable it!\n");
-        tp->aspm = false;
+        IOLog("Hardware doesn't support ASPM properly. Disable L1!\n");
+        tp->aspm &= ~kIOPCILinkControlASPMBitsL1;
     }
-    setupASPM(pciDevice, true, tp->aspm);
+    setupASPM(pciDevice, (tp->aspm & kIOPCILinkControlASPMBitsL0s), (tp->aspm & kIOPCILinkControlASPMBitsL1));
 
     rtl8125_init_software_variable(tp);
     
@@ -801,12 +804,12 @@ void RTL8125::rtl812xHwConfig(struct rtl8125_private *tp)
     /* Meaning unknown. */
     rtl8125_mac_ocp_write(tp, 0xE098, 0xC302);
 
-    if ((tp->aspm) && (tp->org_pci_offset_99 & (BIT_2 | BIT_5 | BIT_6)))
+    if ((tp->aspm & kIOPCILinkControlASPMBitsL1) && (tp->org_pci_offset_99 & (BIT_2 | BIT_5 | BIT_6)))
         rtl8125_init_pci_offset_99(tp);
     else
         rtl8125_disable_pci_offset_99(tp);
 
-    if ((tp->aspm) && (tp->org_pci_offset_180 & rtl8125_get_l1off_cap_bits(tp)))
+    if ((tp->aspm & kIOPCILinkControlASPMBitsL1) && (tp->org_pci_offset_180 & rtl8125_get_l1off_cap_bits(tp)))
         rtl8125_init_pci_offset_180(tp);
     else
         rtl8125_disable_pci_offset_180(tp);
@@ -839,7 +842,7 @@ void RTL8125::rtl812xHwConfig(struct rtl8125_private *tp)
                     NICChkTypeEnableDashInterrupt(tp);
     #endif
 
-    rtl8125_enable_aspm_clkreq_lock(tp, tp->aspm ? 1 : 0);
+    rtl8125_enable_aspm_clkreq_lock(tp, (tp->aspm & kIOPCILinkControlASPMBitsL1) ? 1 : 0);
 
     RTL_W8(tp, Cfg9346, RTL_R8(tp, Cfg9346) & ~Cfg9346_Unlock);
     

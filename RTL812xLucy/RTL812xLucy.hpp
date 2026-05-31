@@ -236,7 +236,8 @@ enum
 };
 
 #define kParamName "Driver Parameters"
-#define kEnableASPM "enableASPM"
+#define kEnableL0sName "enableAspmL0s"
+#define kEnableL1Name "enableAspmL1"
 #define kEnableCSO6Name "enableCSO6"
 #define kEnableTSO4Name "enableTSO4"
 #define kEnableTSO6Name "enableTSO6"

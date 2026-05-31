@@ -761,7 +761,7 @@ u8 rtl8125_csi_fun0_read_byte(struct rtl8125_private *tp, u32 addr)
     
     RegAlignAddr = addr & ~(0x3);
     ShiftByte = addr & (0x3);
-    TmpUlong = rtl8125_csi_other_fun_read(tp, 0, addr);
+    TmpUlong = rtl8125_csi_other_fun_read(tp, 0, RegAlignAddr);
     TmpUlong >>= (8*ShiftByte);
     RetVal = (u8)TmpUlong;
     
@@ -10650,7 +10650,7 @@ static void rtl8125_hw_phy_config_8125a_1(struct rtl8125_private *tp)
     
     //enable aldps
     //GPHY OCP 0xA430 bit[2] = 0x1 (en_aldps)
-    if (tp->aspm) {
+    if (tp->aspm & kIOPCILinkControlASPMBitsL1) {
         if (HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp)) {
             rtl8125_enable_phy_aldps(tp);
         }
@@ -11008,7 +11008,7 @@ static void rtl8125_hw_phy_config_8125a_2(struct rtl8125_private *tp)
     }
     
     
-    if (tp->aspm) {
+    if (tp->aspm & kIOPCILinkControlASPMBitsL1) {
         if (HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp)) {
             rtl8125_enable_phy_aldps(tp);
         }
@@ -11293,7 +11293,7 @@ static void rtl8125_hw_phy_config_8125b_1(struct rtl8125_private *tp)
     SetEthPhyOcpBit(tp, 0xA438, BIT_12);
     
     
-    if (tp->aspm) {
+    if (tp->aspm & kIOPCILinkControlASPMBitsL1) {
         if (HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp)) {
             rtl8125_enable_phy_aldps(tp);
         }
@@ -11391,7 +11391,7 @@ static void rtl8125_hw_phy_config_8125b_2(struct rtl8125_private *tp)
      */
     
     
-    if (tp->aspm) {
+    if (tp->aspm & kIOPCILinkControlASPMBitsL1) {
         if (HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp)) {
             rtl8125_enable_phy_aldps(tp);
         }
@@ -11428,7 +11428,7 @@ static void rtl8125_hw_phy_config_8125bp_1(struct rtl8125_private *tp)
                                           BIT_13,
                                           BIT_12 | BIT_11);
 
-    if (tp->aspm && HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp))
+    if ((tp->aspm & kIOPCILinkControlASPMBitsL1) && HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp))
         rtl8125_enable_phy_aldps(tp);
 }
 
@@ -11457,7 +11457,7 @@ static void rtl8125_hw_phy_config_8125bp_2(struct rtl8125_private *tp)
                                           BIT_13,
                                           BIT_12 | BIT_11);
 
-    if (tp->aspm && HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp))
+    if ((tp->aspm & kIOPCILinkControlASPMBitsL1) && HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp))
         rtl8125_enable_phy_aldps(tp);
 }
 
@@ -11482,7 +11482,7 @@ static void rtl8125_hw_phy_config_8125cp_1(struct rtl8125_private *tp)
     mdio_direct_write_phy_ocp(tp, 0xA436, 0x81D0);
     mdio_direct_write_phy_ocp(tp, 0xA438, 0x054D);
 
-    if (tp->aspm && HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp))
+    if ((tp->aspm & kIOPCILinkControlASPMBitsL1) && HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp))
         rtl8125_enable_phy_aldps(tp);
 }
 
@@ -11798,7 +11798,7 @@ static void rtl8125_hw_phy_config_8125d_1(struct rtl8125_private *tp)
     rtl8125_set_eth_phy_ocp_bit(tp, 0xA430, BIT_12 | BIT_0);
     rtl8125_set_eth_phy_ocp_bit(tp, 0xA442, BIT_7);
 
-    if (tp->aspm && HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp))
+    if ((tp->aspm & kIOPCILinkControlASPMBitsL1) && HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp))
         rtl8125_enable_phy_aldps(tp);
 }
 
@@ -11894,7 +11894,7 @@ static void rtl8125_hw_phy_config_8125d_2(struct rtl8125_private *tp)
     rtl8125_set_eth_phy_ocp_bit(tp, 0xA430, BIT_12 | BIT_0);
     rtl8125_set_eth_phy_ocp_bit(tp, 0xA442, BIT_7);
 
-    if (tp->aspm && HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp))
+    if ((tp->aspm & kIOPCILinkControlASPMBitsL1) && HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp))
         rtl8125_enable_phy_aldps(tp);
 }
 
@@ -11902,7 +11902,7 @@ static void rtl8126_hw_phy_config_8126a_1(struct rtl8125_private *tp)
 {
     rtl8125_set_eth_phy_ocp_bit(tp, 0xA442, BIT_11);
 
-    if (tp->aspm && HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp))
+    if ((tp->aspm & kIOPCILinkControlASPMBitsL1) && HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp))
         rtl8125_enable_phy_aldps(tp);
 }
 
@@ -12370,7 +12370,7 @@ static void rtl8126_hw_phy_config_8126a_2(struct rtl8125_private *tp)
                                           0x3700);
 
 
-    if (tp->aspm && HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp))
+    if ((tp->aspm & kIOPCILinkControlASPMBitsL1) && HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp))
         rtl8125_enable_phy_aldps(tp);
 }
 
@@ -12624,7 +12624,7 @@ rtl8126_hw_phy_config_8126a_3(struct rtl8125_private *tp)
                                               0x5000);
 
 
-        if (tp->aspm && HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp))
+        if ((tp->aspm & kIOPCILinkControlASPMBitsL1) && HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp))
             rtl8125_enable_phy_aldps(tp);
 }
 
@@ -13073,7 +13073,7 @@ void rtl8125_init_software_variable(struct rtl8125_private *tp)
         tp->DashFirmwareVersion = rtl8125_get_dash_fw_ver(tp);
     }
 
-    if (tp->aspm) {
+    if (tp->aspm & kIOPCILinkControlASPMBitsL1) {
         tp->org_pci_offset_99 = rtl8125_csi_fun0_read_byte(tp, 0x99);
         tp->org_pci_offset_99 &= ~(BIT_5|BIT_6);
 

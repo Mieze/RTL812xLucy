@@ -75,7 +75,8 @@ void RTL8125::getParams()
     OSString *fbAddr;
     OSBoolean *tsoV4;
     OSBoolean *tsoV6;
-    OSBoolean *aspm;
+    OSBoolean *aspmL0s;
+    OSBoolean *aspmL1;
     OSNumber *tv;
     UInt32 interval;
     
@@ -112,10 +113,20 @@ void RTL8125::getParams()
         
         IOLog("TCP/IPv6 segmentation offload %s.\n", enableTSO6 ? onName : offName);
         
-        aspm = OSDynamicCast(OSBoolean, params->getObject(kEnableASPM));
-        linuxData.aspm = (aspm != NULL) ? aspm->getValue() : false;
+        linuxData.aspm = 0;
+
+        aspmL0s = OSDynamicCast(OSBoolean, params->getObject(kEnableL0sName));
         
-        IOLog("Active State Power Management %s.\n", linuxData.aspm ? onName : offName);
+        if (aspmL0s != NULL)
+            linuxData.aspm |= aspmL0s->getValue() ? kIOPCILinkControlASPMBitsL0s : 0;
+
+        aspmL1 = OSDynamicCast(OSBoolean, params->getObject(kEnableL1Name));
+        
+        if (aspmL1 != NULL)
+            linuxData.aspm |= aspmL1->getValue() ? kIOPCILinkControlASPMBitsL1 : 0;
+
+        IOLog("Active State Power Management L0s %s.\n", (linuxData.aspm & kIOPCILinkControlASPMBitsL0s) ? onName : offName);
+        IOLog("Active State Power Management L1 %s.\n", (linuxData.aspm & kIOPCILinkControlASPMBitsL1) ? onName : offName);
 
         tv = OSDynamicCast(OSNumber, params->getObject(kPollTime10GName));
 
@@ -179,7 +190,7 @@ void RTL8125::getParams()
         /* Use default values in case of missing config data. */
         enableTSO4 = false;
         enableTSO6 = false;
-        linuxData.aspm = false;
+        linuxData.aspm = 0;
         pollTime10G = 100000;
         pollTime5G = 120000;
         pollTime2G = 160000;

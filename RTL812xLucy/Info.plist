@@ -28,7 +28,9 @@
 			<string>com.insanelymac.${PRODUCT_NAME:rfc1034identifier}</string>
 			<key>Driver Parameters</key>
 			<dict>
-				<key>enableASPM</key>
+				<key>enableAspmL0s</key>
+				<true/>
+				<key>enableAspmL1</key>
 				<true/>
 				<key>enableTSO4</key>
 				<true/>
