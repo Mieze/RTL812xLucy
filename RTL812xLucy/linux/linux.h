@@ -443,7 +443,13 @@ struct list_head {
 #define MDIO_NAME_SIZE        32
 #define UL(x)        (_UL(x))
 
+#if defined(__x86_64__) || defined(__i386__)
 #define wmb()    asm volatile("sfence" : : : "memory")
+#elif defined(__arm64__) || defined(__aarch64__)
+#define wmb()    asm volatile("dsb st" : : : "memory")
+#else
+#error "wmb(): unsupported architecture"
+#endif
 
 /* Maximum number of MCA banks per CPU. */
 #define MAX_NR_BANKS 64
