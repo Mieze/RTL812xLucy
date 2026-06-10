@@ -137,6 +137,7 @@ enum mcfg {
 #define D0_SPEED_UP_SPEED_1000       1
 #define D0_SPEED_UP_SPEED_2500       2
 #define D0_SPEED_UP_SPEED_5000       3
+#define D0_SPEED_UP_SPEED_10000      4
 
 #define RTL8125_MAC_MCU_PAGE_SIZE 256 //256 words
 
@@ -285,6 +286,7 @@ enum RTL8125_registers {
     SW_TAIL_PTR1_8125BP = 0x0D38,
     HW_CLO_PTR0_8125BP = 0x0D34,
     HW_CLO_PTR1_8125BP = 0x0D3C,
+    RADMFIFO_PROTECT   = 0x0402,
     DOUBLE_VLAN_CONFIG = 0x1000,
     TX_NEW_CTRL        = 0x203E,
     TNPDS_Q1_LOW_8125  = 0x2100,
@@ -1118,6 +1120,7 @@ extern "C" {
     void rtl8125_init_pci_offset_99(struct rtl8125_private *tp);
     void rtl8125_disable_pci_offset_180(struct rtl8125_private *tp);
     void rtl8125_set_pfm_patch(struct rtl8125_private *tp, bool enable);
+    void rtl8125_set_radm_fifo_prot(struct rtl8125_private *tp, bool enable);
     void rtl8125_set_rms(struct rtl8125_private *tp, u16 rms);
     void rtl8125_disable_rxdvgate(struct rtl8125_private *tp);
     void rtl8125_disable_pci_offset_99(struct rtl8125_private *tp);
@@ -1221,6 +1224,7 @@ void rtl8125_enable_exit_l1_mask(struct rtl8125_private *tp);
 void rtl8125_init_pci_offset_99(struct rtl8125_private *tp);
 void rtl8125_disable_pci_offset_180(struct rtl8125_private *tp);
 void rtl8125_set_pfm_patch(struct rtl8125_private *tp, bool enable);
+void rtl8125_set_radm_fifo_prot(struct rtl8125_private *tp, bool enable);
 void rtl8125_set_rms(struct rtl8125_private *tp, u16 rms);
 void rtl8125_disable_rxdvgate(struct rtl8125_private *tp);
 void rtl8125_disable_pci_offset_99(struct rtl8125_private *tp);

@@ -322,6 +322,19 @@ bool RTL8125::start(IOService *provider)
     mapper = IOMapper::copyMapperForDevice(pciDevice);
 
     getParams();
+
+#if defined(__arm64__)
+    /*
+     * On Apple Silicon all PCIe/Thunderbolt DMA is translated by DART.
+     * Raw physical addresses would fault, so the mapper-aware code path
+     * (historically the AppleVTD path) is mandatory whenever the device
+     * has a system mapper.
+     */
+    if (mapper && !useAppleVTD) {
+        IOLog("DART mapper present, using mapped DMA path.\n");
+        useAppleVTD = true;
+    }
+#endif
     
     if (!initPCIConfigSpace(pciDevice)) {
         goto error_cfg;

@@ -660,9 +660,12 @@ void RTL8125::rtl812xHwConfig(struct rtl8125_private *tp)
 
     /* Enable TxNoClose. */
     RTL_W32(tp, TxConfig, (RTL_R32(tp, TxConfig) | BIT_6));
-    
+
     rtl8125_set_l1_l0s_entry_latency(tp);
     rtl812xSetMrrs(tp, 0x50);
+
+    if (tp->mcfg == CFG_METHOD_41 || tp->mcfg == CFG_METHOD_42)
+        rtl8126_disable_l1_timeout(tp);
 
     /* Enable TCAM. */
     if (tp->HwSuppTcamVer == 1)
@@ -683,8 +686,9 @@ void RTL8125::rtl812xHwConfig(struct rtl8125_private *tp)
      * tx timeouts when using TSO.
      */
     mac_ocp_data = rtl8125_mac_ocp_read(tp, 0xEB58);
-    
-    if (tp->mcfg == CFG_METHOD_32 || tp->mcfg == CFG_METHOD_33)
+
+    if (tp->mcfg == CFG_METHOD_32 || tp->mcfg == CFG_METHOD_33 ||
+        tp->mcfg == CFG_METHOD_41 || tp->mcfg == CFG_METHOD_42)
         mac_ocp_data &= ~(BIT_0 | BIT_1);
     else
         mac_ocp_data &= ~(BIT_0);
@@ -692,20 +696,35 @@ void RTL8125::rtl812xHwConfig(struct rtl8125_private *tp)
 #ifdef USE_NEW_TX_DESC
     mac_ocp_data |= (BIT_0);
 #endif  /* USE_NEW_TX_DESC */
-    
+
     rtl8125_mac_ocp_write(tp, 0xEB58, mac_ocp_data);
 
+    /* RTL8127: TxNoClose requires bit 2 of 0x20E4 to be set. */
+    if (tp->mcfg == CFG_METHOD_41 || tp->mcfg == CFG_METHOD_42)
+        RTL_W8(tp, 0x20E4, RTL_R8(tp, 0x20E4) | BIT_2);
+
+    if (tp->mcfg == CFG_METHOD_42) {
+        ClearMcuAccessRegBit(tp, 0xE00C, BIT_12);
+        ClearMcuAccessRegBit(tp, 0xC0C2, BIT_6);
+    }
+
     mac_ocp_data = rtl8125_mac_ocp_read(tp, 0xE614);
-    mac_ocp_data &= ~( BIT_10 | BIT_9 | BIT_8);
-    
-    if (tp->mcfg == CFG_METHOD_31 || tp->mcfg == CFG_METHOD_32 ||
+
+    if (tp->mcfg == CFG_METHOD_41 || tp->mcfg == CFG_METHOD_42) {
+        /* RTL8127 */
+        mac_ocp_data &= ~(BIT_11 | BIT_10 | BIT_9 | BIT_8);
+        mac_ocp_data |= (15 << 8);
+    } else if (tp->mcfg == CFG_METHOD_31 || tp->mcfg == CFG_METHOD_32 ||
         tp->mcfg == CFG_METHOD_33) {
         /* RTL8126A */
+        mac_ocp_data &= ~( BIT_10 | BIT_9 | BIT_8);
         mac_ocp_data |= 0x0400;
     } else if (tp->mcfg == CFG_METHOD_4 || tp->mcfg == CFG_METHOD_5) {
         /* RTL8125B */
+        mac_ocp_data &= ~( BIT_10 | BIT_9 | BIT_8);
         mac_ocp_data |= 0x0200;
     } else {
+        mac_ocp_data &= ~( BIT_10 | BIT_9 | BIT_8);
         mac_ocp_data |= 0x0300;
     }
     rtl8125_mac_ocp_write(tp, 0xE614, mac_ocp_data);
@@ -720,10 +739,11 @@ void RTL8125::rtl812xHwConfig(struct rtl8125_private *tp)
 
     mac_ocp_data = rtl8125_mac_ocp_read(tp, 0xE63E);
     mac_ocp_data &= ~(BIT_5 | BIT_4);
-    
-    if (tp->mcfg == CFG_METHOD_2 || tp->mcfg == CFG_METHOD_3)
+
+    if (tp->mcfg == CFG_METHOD_2 || tp->mcfg == CFG_METHOD_3 ||
+        tp->mcfg == CFG_METHOD_41 || tp->mcfg == CFG_METHOD_42)
         mac_ocp_data |= ((0x02 & 0x03) << 4);
-    
+
     rtl8125_mac_ocp_write(tp, 0xE63E, mac_ocp_data);
     
     /* Disable MCU. */
@@ -751,7 +771,11 @@ void RTL8125::rtl812xHwConfig(struct rtl8125_private *tp)
     
     mac_ocp_data = rtl8125_mac_ocp_read(tp, 0xE056);
     mac_ocp_data &= ~(BIT_7 | BIT_6 | BIT_5 | BIT_4);
-    mac_ocp_data |= (BIT_4 | BIT_5);
+
+    /* RTL8127 leaves these bits cleared (r8127_n.c). */
+    if (tp->mcfg != CFG_METHOD_41 && tp->mcfg != CFG_METHOD_42)
+        mac_ocp_data |= (BIT_4 | BIT_5);
+
     rtl8125_mac_ocp_write(tp, 0xE056, mac_ocp_data);
     
     RTL_W8(tp, TDFNR, 0x10);
@@ -767,17 +791,29 @@ void RTL8125::rtl812xHwConfig(struct rtl8125_private *tp)
     mac_ocp_data |= (BIT_0);
     rtl8125_mac_ocp_write(tp, 0xEA1C, mac_ocp_data);
     
-    mac_ocp_data = rtl8125_mac_ocp_read(tp, 0xE0C0);
-    mac_ocp_data &= ~(BIT_14 | BIT_11 | BIT_10 | BIT_9 | BIT_8 | BIT_3 | BIT_2 | BIT_1 | BIT_0);
-    mac_ocp_data |= (BIT_14 | BIT_10 | BIT_1 | BIT_0);
-    rtl8125_mac_ocp_write(tp, 0xE0C0, mac_ocp_data);
-    
-    SetMcuAccessRegBit(tp, 0xE052, (BIT_6|BIT_5|BIT_3));
-    ClearMcuAccessRegBit(tp, 0xE052, BIT_7);
-    
+    if (tp->mcfg == CFG_METHOD_41 || tp->mcfg == CFG_METHOD_42) {
+        rtl8125_mac_ocp_write(tp, 0xE0C0, 0x4000);
+
+        SetMcuAccessRegBit(tp, 0xE052, (BIT_6 | BIT_5));
+        ClearMcuAccessRegBit(tp, 0xE052, (BIT_3 | BIT_7));
+    } else {
+        mac_ocp_data = rtl8125_mac_ocp_read(tp, 0xE0C0);
+        mac_ocp_data &= ~(BIT_14 | BIT_11 | BIT_10 | BIT_9 | BIT_8 | BIT_3 | BIT_2 | BIT_1 | BIT_0);
+        mac_ocp_data |= (BIT_14 | BIT_10 | BIT_1 | BIT_0);
+        rtl8125_mac_ocp_write(tp, 0xE0C0, mac_ocp_data);
+
+        SetMcuAccessRegBit(tp, 0xE052, (BIT_6|BIT_5|BIT_3));
+        ClearMcuAccessRegBit(tp, 0xE052, BIT_7);
+    }
+
     mac_ocp_data = rtl8125_mac_ocp_read(tp, 0xD430);
     mac_ocp_data &= ~(BIT_11 | BIT_10 | BIT_9 | BIT_8 | BIT_7 | BIT_6 | BIT_5 | BIT_4 | BIT_3 | BIT_2 | BIT_1 | BIT_0);
-    mac_ocp_data |= 0x47F;
+
+    if (tp->mcfg == CFG_METHOD_41 || tp->mcfg == CFG_METHOD_42)
+        mac_ocp_data |= 0x45F;
+    else
+        mac_ocp_data |= 0x47F;
+
     rtl8125_mac_ocp_write(tp, 0xD430, mac_ocp_data);
     
     //rtl8125_mac_ocp_write(tp, 0xE0C0, 0x4F87);
@@ -790,8 +826,9 @@ void RTL8125::rtl812xHwConfig(struct rtl8125_private *tp)
     
     mac_ocp_data = rtl8125_mac_ocp_read(tp, 0xEA1C);
     mac_ocp_data &= ~(BIT_2);
-    
-    if (tp->mcfg == CFG_METHOD_32 || tp->mcfg == CFG_METHOD_33)
+
+    if (tp->mcfg == CFG_METHOD_32 || tp->mcfg == CFG_METHOD_33 ||
+        tp->mcfg == CFG_METHOD_41 || tp->mcfg == CFG_METHOD_42)
         mac_ocp_data &= ~(BIT_9 | BIT_8);
 
     rtl8125_mac_ocp_write(tp, 0xEA1C, mac_ocp_data);
@@ -808,6 +845,13 @@ void RTL8125::rtl812xHwConfig(struct rtl8125_private *tp)
     }
 
     RTL_W16(tp, 0x1880, RTL_R16(tp, 0x1880) & ~(BIT_4 | BIT_5));
+
+    if (tp->mcfg == CFG_METHOD_41 || tp->mcfg == CFG_METHOD_42) {
+        mac_ocp_data = rtl8125_mac_ocp_read(tp, 0xD40C);
+        mac_ocp_data &= ~0xE038;
+        mac_ocp_data |= 0x8020;
+        rtl8125_mac_ocp_write(tp, 0xD40C, mac_ocp_data);
+    }
 
     //other hw parameters
     rtl8125_hw_clear_timer_int(tp);
@@ -856,6 +900,8 @@ void RTL8125::rtl812xHwConfig(struct rtl8125_private *tp)
             if (tp->DASH && !tp->dash_printer_enabled)
                     NICChkTypeEnableDashInterrupt(tp);
     #endif
+
+    rtl8125_set_radm_fifo_prot(tp, 1);
 
     rtl8125_enable_aspm_clkreq_lock(tp, (tp->aspm & kIOPCILinkControlASPMBitsL1) ? 1 : 0);
 
@@ -1034,13 +1080,20 @@ void RTL8125::rtl812xLinkOnPatch(struct rtl8125_private *tp)
         case CFG_METHOD_31:
         case CFG_METHOD_32:
         case CFG_METHOD_33:
+        case CFG_METHOD_41:
+        case CFG_METHOD_42:
             if (status & _10bps)
                 rtl8125_enable_eee_plus(tp);
             break;
-            
+
         default:
             break;
     }
+
+    if (status & (_1000bpsL | _2500bpsL | _10bps | _100bps | _1000bpsF))
+        rtl8125_set_radm_fifo_prot(tp, 1);
+    else
+        rtl8125_set_radm_fifo_prot(tp, 0);
 
     if (tp->RequiredPfmPatch)
         rtl8125_set_pfm_patch(tp, (status & _10bps) ? 1 : 0);
@@ -1068,9 +1121,11 @@ void RTL8125::rtl812xLinkDownPatch(struct rtl8125_private *tp)
         case CFG_METHOD_8:
         case CFG_METHOD_9:
         case CFG_METHOD_12:
+        case CFG_METHOD_41:
+        case CFG_METHOD_42:
             rtl8125_disable_eee_plus(tp);
             break;
-            
+
         default:
             break;
     }
