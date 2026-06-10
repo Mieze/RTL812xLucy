@@ -533,6 +533,7 @@ enum RTL8125_register_content {
     EPHYAR_Reg_Mask_v2 = 0x7f,
     EPHYAR_Reg_shift = 16,
     EPHYAR_Data_Mask = 0xffff,
+    EPHYAR_EXT_ADDR = 0x0ffe,
 
     /* CSI access */
     CSIAR_Flag = 0x80000000,
