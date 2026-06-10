@@ -1069,6 +1069,7 @@ static const u16 other_q_intr_mask = (RxOK1 | RxDU1);
 #define HW_SUPP_PHY_LINK_SPEED_GIGA(_M)        ((_M)->HwSuppMaxPhyLinkSpeed >= 1000)
 #define HW_SUPP_PHY_LINK_SPEED_2500M(_M)        ((_M)->HwSuppMaxPhyLinkSpeed >= 2500)
 #define HW_SUPP_PHY_LINK_SPEED_5000M(_M)        ((_M)->HwSuppMaxPhyLinkSpeed >= 5000)
+#define HW_SUPP_PHY_LINK_SPEED_10000M(_M)       ((_M)->HwSuppMaxPhyLinkSpeed >= 10000)
 
 #ifdef __cplusplus
 extern "C" {

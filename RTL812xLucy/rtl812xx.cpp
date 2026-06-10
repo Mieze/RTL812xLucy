@@ -45,6 +45,7 @@
 
 #include "RTL812xLucy.hpp"
 #include "rtl812x_dash.h"
+#include "rtl8127_fiber.h"
 #include "linux/mdio.h"
 
 /* register is set if system vendor successfully tested ASPM 1.2 */
@@ -76,13 +77,14 @@ rtl8125_is_autoneg_mode_valid(u32 autoneg)
 bool rtl8125_is_speed_mode_valid(u32 speed)
 {
     switch(speed) {
+        case SPEED_10000:
         case SPEED_5000:
         case SPEED_2500:
         case SPEED_1000:
         case SPEED_100:
         case SPEED_10:
             return true;
-            
+
         default:
             return false;
     }
@@ -12732,6 +12734,8 @@ void rtl8125_hw_phy_config(struct rtl8125_private *tp)
     //legacy force mode(Chap 22)
     rtl8125_clear_eth_phy_ocp_bit(tp, 0xA5B4, BIT_15);
 
+    rtl8127_hw_fiber_phy_config(tp);
+
     /*ocp phy power saving*/
     /*
     if (tp->aspm) {
@@ -13161,6 +13165,8 @@ void rtl8125_init_software_variable(struct rtl8125_private *tp)
             tp->HwSuppMaxPhyLinkSpeed = 1000;
             break;
     }
+
+    rtl8127_check_fiber_mode_support(tp);
 /*
     if (timer_count == 0 || tp->mcfg == CFG_METHOD_DEFAULT)
             tp->use_timer_interrupt = FALSE;
@@ -13574,7 +13580,7 @@ void rtl8125_init_software_variable(struct rtl8125_private *tp)
     if (tp->mcfg != CFG_METHOD_DEFAULT) {
         struct ethtool_keee *eee = &tp->eee;
 
-        eee->eee_enabled = 1;
+        eee->eee_enabled = HW_FIBER_MODE_ENABLED(tp) ? 0 : 1;
         linkmode_set_bit(ETHTOOL_LINK_MODE_100baseT_Full_BIT, &eee->supported);
         linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT, &eee->supported);
         linkmode_set_bit(ETHTOOL_LINK_MODE_100baseT_Full_BIT, &eee->advertised);
@@ -13589,7 +13595,7 @@ void rtl8125_init_software_variable(struct rtl8125_private *tp)
             if (HW_SUPP_PHY_LINK_SPEED_5000M(tp))
                 linkmode_set_bit(ETHTOOL_LINK_MODE_5000baseT_Full_BIT, &eee->supported);
         }
-        eee->tx_lpi_enabled = 1;
+        eee->tx_lpi_enabled = eee->eee_enabled;
         eee->tx_lpi_timer = ETH_DATA_LEN + ETH_HLEN + 0x20;
     }
 }

@@ -207,7 +207,10 @@ bool RTL8125::setupMediumDict()
     UInt32 i;
     bool result = false;
 
-    if (HW_SUPP_PHY_LINK_SPEED_5000M(tp)) {
+    if (HW_SUPP_PHY_LINK_SPEED_10000M(tp)) {
+        mediumArray[MIDX_AUTO].adv |= (ADVERTISED_2500baseX_Full | RTK_ADVERTISED_5000baseX_Full | ADVERTISED_10000baseT_Full);
+        limit = MIDX_COUNT;
+    } else if (HW_SUPP_PHY_LINK_SPEED_5000M(tp)) {
         mediumArray[MIDX_AUTO].adv |= (ADVERTISED_2500baseX_Full | RTK_ADVERTISED_5000baseX_Full);
         limit = MIDX_10000FD;
     } else if (HW_SUPP_PHY_LINK_SPEED_2500M(tp)) {

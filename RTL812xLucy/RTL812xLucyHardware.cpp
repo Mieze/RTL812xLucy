@@ -19,6 +19,7 @@
 */
 
 #include "RTL812xLucy.hpp"
+#include "rtl8127_fiber.h"
 #include "linux/mdio.h"
 #include "rtl812x_eeprom.h"
 
@@ -921,6 +922,22 @@ void RTL8125::rtl812xSetPhyMedium(struct rtl8125_private *tp, UInt8 autoneg, UIn
         DebugLog("Disable EEE support.\n");
     }
     rtl8125_disable_giga_lite(tp);
+
+    if (HW_FIBER_MODE_ENABLED(tp)) {
+        /* Fiber link is forced through the SerDes, there is no copper autoneg. */
+        if (speed != SPEED_1000)
+            speed = SPEED_10000;
+
+        tp->autoneg = autoneg;
+        tp->speed = speed;
+        tp->duplex = DUPLEX_FULL;
+        tp->advertising = adv;
+
+        rtl8125_set_d0_speedup_speed(tp);
+
+        rtl8127_hw_fiber_phy_config(tp);
+        return;
+    }
 
     giga_ctrl = rtl8125_mdio_read(tp, MII_CTRL1000);
     giga_ctrl &= ~(ADVERTISE_1000HALF | ADVERTISE_1000FULL);
