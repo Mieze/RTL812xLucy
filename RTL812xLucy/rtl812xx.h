@@ -24,7 +24,7 @@ struct RtlChipInfo {
     UInt32 jumbo_frame_sz;
 };
 
-#define NUM_CHIPS 16
+#define NUM_CHIPS 18
 
 #define FIRMWARE_8125A_3    "rtl8125a-3.fw"
 #define FIRMWARE_8125B_1    "rtl8125b-1.fw"
@@ -37,6 +37,9 @@ struct RtlChipInfo {
 
 #define FIRMWARE_8126A_2    "rtl8126a-2.fw"
 #define FIRMWARE_8126A_3    "rtl8126a-3.fw"
+
+#define FIRMWARE_8127_1     "rtl8127-1.fw"
+#define FIRMWARE_8127_2     "rtl8127-2.fw"
 
 enum eetype {
         EEPROM_TYPE_NONE=0,
@@ -61,6 +64,8 @@ enum mcfg {
     CFG_METHOD_31,
     CFG_METHOD_32,
     CFG_METHOD_33,
+    CFG_METHOD_41,
+    CFG_METHOD_42,
     CFG_METHOD_DEFAULT,
     CFG_METHOD_MAX
 };
@@ -1018,6 +1023,8 @@ struct rtl8125_private {
 #define NIC_RAMCODE_VERSION_CFG_METHOD_31 (0x0023)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_32 (0x0033)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_33 (0x0060)
+#define NIC_RAMCODE_VERSION_CFG_METHOD_41 (0x0015)
+#define NIC_RAMCODE_VERSION_CFG_METHOD_42 (0x0036)
 
 //hwoptimize
 #define HW_PATCH_SOC_LAN (BIT_0)

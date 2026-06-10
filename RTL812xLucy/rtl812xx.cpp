@@ -13012,7 +13012,14 @@ void rtl8125_init_software_variable(struct rtl8125_private *tp)
         case CFG_METHOD_9:
                 tp->HwSuppDashVer = 4;
                 break;
-            
+
+        case CFG_METHOD_42:
+            tmp = (u8)rtl8125_mac_ocp_read(tp, 0xD006);
+
+            if (tmp == 0x03)
+                    tp->HwSuppDashVer = 4;
+            break;
+
         default:
                 tp->HwSuppDashVer = 0;
                 break;
@@ -13029,6 +13036,11 @@ void rtl8125_init_software_variable(struct rtl8125_private *tp)
         case CFG_METHOD_9:
         case CFG_METHOD_12:
                 tp->HwSuppOcpChannelVer = 2;
+                break;
+
+        case CFG_METHOD_42:
+                if (HW_DASH_SUPPORT_DASH(tp))
+                    tp->HwSuppOcpChannelVer = 2;
                 break;
     }
     tp->AllowAccessDashOcp = rtl8125_is_allow_access_dash_ocp(tp);
@@ -13060,6 +13072,11 @@ void rtl8125_init_software_variable(struct rtl8125_private *tp)
         case CFG_METHOD_32:
         case CFG_METHOD_33:
             tp->HwPcieSNOffset = 0x174;
+            break;
+
+        case CFG_METHOD_41:
+        case CFG_METHOD_42:
+            tp->HwPcieSNOffset = 0x168;
             break;
     }
     tp->DASH = rtl8125_check_dash(tp);
@@ -13107,6 +13124,11 @@ void rtl8125_init_software_variable(struct rtl8125_private *tp)
             case CFG_METHOD_33:
                 tp->org_pci_offset_180 = rtl8125_csi_fun0_read_byte(tp, 0x22c);
                 break;
+
+            case CFG_METHOD_41:
+            case CFG_METHOD_42:
+                tp->org_pci_offset_180 = rtl8125_csi_fun0_read_byte(tp, 0x254);
+                break;
         }
     }
     //tp->use_timer_interrupt = TRUE;
@@ -13129,7 +13151,12 @@ void rtl8125_init_software_variable(struct rtl8125_private *tp)
         case CFG_METHOD_33:
             tp->HwSuppMaxPhyLinkSpeed = 5000;
             break;
-            
+
+        case CFG_METHOD_41:
+        case CFG_METHOD_42:
+            tp->HwSuppMaxPhyLinkSpeed = 10000;
+            break;
+
         default:
             tp->HwSuppMaxPhyLinkSpeed = 1000;
             break;
@@ -13154,6 +13181,8 @@ void rtl8125_init_software_variable(struct rtl8125_private *tp)
         case CFG_METHOD_31:
         case CFG_METHOD_32:
         case CFG_METHOD_33:
+        case CFG_METHOD_41:
+        case CFG_METHOD_42:
             tp->HwSuppMagicPktVer = WAKEUP_MAGIC_PACKET_V3;
             break;
             
@@ -13204,6 +13233,8 @@ void rtl8125_init_software_variable(struct rtl8125_private *tp)
         case CFG_METHOD_11:
         case CFG_METHOD_12:
         case CFG_METHOD_13:
+        case CFG_METHOD_41:
+        case CFG_METHOD_42:
             tp->HwSuppD0SpeedUpVer = 2;
             break;
     }
@@ -13226,6 +13257,8 @@ void rtl8125_init_software_variable(struct rtl8125_private *tp)
         case CFG_METHOD_11:
         case CFG_METHOD_12:
         case CFG_METHOD_13:
+        case CFG_METHOD_41:
+        case CFG_METHOD_42:
                 tp->HwSuppTxNoCloseVer = 6;
                 break;
             
@@ -13315,6 +13348,14 @@ void rtl8125_init_software_variable(struct rtl8125_private *tp)
             
         case CFG_METHOD_33:
             tp->sw_ram_code_ver = NIC_RAMCODE_VERSION_CFG_METHOD_33;
+            break;
+
+        case CFG_METHOD_41:
+            tp->sw_ram_code_ver = NIC_RAMCODE_VERSION_CFG_METHOD_41;
+            break;
+
+        case CFG_METHOD_42:
+            tp->sw_ram_code_ver = NIC_RAMCODE_VERSION_CFG_METHOD_42;
             break;
     }
     if (tp->HwIcVerUnknown) {
@@ -13453,6 +13494,8 @@ void rtl8125_init_software_variable(struct rtl8125_private *tp)
         case CFG_METHOD_11:
         case CFG_METHOD_12:
         case CFG_METHOD_13:
+        case CFG_METHOD_41:
+        case CFG_METHOD_42:
             tp->HwSuppIntMitiVer = 6;
             break;
     }
@@ -13461,6 +13504,8 @@ void rtl8125_init_software_variable(struct rtl8125_private *tp)
         case CFG_METHOD_31:
         case CFG_METHOD_32:
         case CFG_METHOD_33:
+        case CFG_METHOD_41:
+        case CFG_METHOD_42:
             tp->HwSuppTcamVer = 2;
             tp->TcamNotValidReg = TCAM_NOTVALID_ADDR_V2;
             tp->TcamValidReg = TCAM_VALID_ADDR_V2;
@@ -13506,6 +13551,8 @@ void rtl8125_init_software_variable(struct rtl8125_private *tp)
         case CFG_METHOD_13:
         case CFG_METHOD_32:
         case CFG_METHOD_33:
+        case CFG_METHOD_41:
+        case CFG_METHOD_42:
             tp->HwSuppRxDescType = RX_DESC_RING_TYPE_4;
             break;
             

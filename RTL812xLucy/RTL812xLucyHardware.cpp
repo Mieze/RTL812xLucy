@@ -247,6 +247,20 @@ bool RTL8125::rtl812xIdentifyChip(struct rtl8125_private *tp)
             //tp->efuse_ver = EFUSE_SUPPORT_V4;
             break;
             
+        case 0x6C800000:
+            if (ICVerID == 0x00000000) {
+                tp->mcfg = CFG_METHOD_41;
+                tp->chipset = 15;
+            } else if (ICVerID == 0x100000) {
+                tp->mcfg = CFG_METHOD_42;
+                tp->chipset = 16;
+            } else {
+                tp->mcfg = CFG_METHOD_42;
+                tp->chipset = 16;
+                tp->HwIcVerUnknown = TRUE;
+            }
+            break;
+
         case 0x64800000:
             if (ICVerID == 0x00000000) {
                 tp->mcfg = CFG_METHOD_31;

@@ -155,6 +155,20 @@ const struct RtlChipInfo rtlChipInfo[NUM_CHIPS] {
     0xff7e5880,
     Jumbo_Frame_9k),
 
+    _R("RTL8127 rev. 1",
+    "10",
+    CFG_METHOD_41,
+    Rx_Fetch_Number_8 | Rx_Close_Multiple | RxCfg_pause_slot_en | EnableInnerVlan | EnableOuterVlan | (RX_DMA_BURST_512 << RxCfgDMAShift),
+    0xff7e5880,
+    Jumbo_Frame_9k),
+
+    _R("RTL8127 rev. 2",
+    "10",
+    CFG_METHOD_42,
+    Rx_Fetch_Number_8 | Rx_Close_Multiple | RxCfg_pause_slot_en | EnableInnerVlan | EnableOuterVlan | (RX_DMA_BURST_512 << RxCfgDMAShift),
+    0xff7e5880,
+    Jumbo_Frame_9k),
+
     _R("Unknown",
     "2.5",
     CFG_METHOD_DEFAULT,
