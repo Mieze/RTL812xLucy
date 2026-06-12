@@ -497,6 +497,8 @@ enum RTL8125_register_content {
     /* rtl8125_PHYstatus */
     PowerSaveStatus = 0x80,
     _1000bpsL = 0x80000,
+    _10000bpsF = 0x4000,
+    _10000bpsL = 0x2000,
     _5000bpsF = 0x1000,
     _5000bpsL = 0x800,
     _2500bpsF = 0x400,

@@ -30,7 +30,7 @@ static inline u32 ether_crc(int length, unsigned char *data);
 
 #pragma mark --- static data ---
 
-//static const char *speed10GName = "10 Gigabit";
+static const char *speed10GName = "10 Gigabit";
 static const char *speed5GName = "5 Gigabit";
 static const char *speed25GName = "2.5 Gigabit";
 static const char *speed1GName = "1 Gigabit";
@@ -745,6 +745,11 @@ IOReturn RTL8125::outputStart(IONetworkInterface *interface, IOOptionBits option
         }
         firstDesc->opts1 |= DescOwn;
     }
+    /* Ensure descriptor writes are visible to the device before the
+     * doorbell MMIO write (required on arm64, implicit on x86).
+     */
+    wmb();
+
     /* Update tail pointer. */
     rtl812xDoorbell(&linuxData, txTailPtr0);
 
@@ -1339,7 +1344,10 @@ void RTL8125::rtl812xCheckLinkStatus(struct rtl8125_private *tp)
         } else {
             tp->fcpause = rtl8125_fc_none;
         }
-        if (status & _5000bpsF) {
+        if (status & _10000bpsF) {
+            tp->speed = SPEED_10000;
+            tp->duplex = DUPLEX_FULL;
+        } else if (status & (_5000bpsF | _10000bpsL)) {
             tp->speed = SPEED_5000;
             tp->duplex = DUPLEX_FULL;
         } else if (status & (_2500bpsF | _5000bpsL)) {
@@ -1393,7 +1401,13 @@ void RTL8125::checkLinkStatus()
         } else {
             flowCtl = kFlowControlOff;
         }
-        if (currLinkState & _2500bpsF) {
+        if (currLinkState & _10000bpsF) {
+            speed = SPEED_10000;
+            duplex = DUPLEX_FULL;
+        } else if (currLinkState & (_5000bpsF | _10000bpsL)) {
+            speed = SPEED_5000;
+            duplex = DUPLEX_FULL;
+        } else if (currLinkState & (_2500bpsF | _5000bpsL)) {
             speed = SPEED_2500;
             duplex = DUPLEX_FULL;
         } else if (currLinkState & _1000bpsF) {
@@ -1636,7 +1650,29 @@ void RTL8125::setLinkUp()
     } else {
         flowName = offFlowName;
     }
-    if (spd == SPEED_5000) {
+    if (spd == SPEED_10000) {
+        mediumSpeed = kSpeed10000MBit;
+        speedName = speed10GName;
+        duplexName = duplexFullName;
+
+        if (fc == rtl8125_fc_full) {
+            if (eee) {
+                mediumIndex = MIDX_10000FDFC_EEE;
+                eeeName = eeeNames[kEEETypeYes];
+            } else {
+                mediumIndex = MIDX_10000FDFC;
+                eeeName = eeeNames[kEEETypeNo];
+            }
+        } else {
+            if (eee) {
+                mediumIndex = MIDX_10000FD_EEE;
+                eeeName = eeeNames[kEEETypeYes];
+            } else {
+                mediumIndex = MIDX_10000FD;
+                eeeName = eeeNames[kEEETypeNo];
+            }
+        }
+    } else if (spd == SPEED_5000) {
         mediumSpeed = kSpeed5000MBit;
         speedName = speed5GName;
         duplexName = duplexFullName;
@@ -1764,7 +1800,9 @@ void RTL8125::setLinkUp()
         pollParms.lowThresholdBytes = 0x1000;
         pollParms.highThresholdBytes = 0x10000;
         
-        if (spd == SPEED_5000)
+        if (spd == SPEED_10000)
+            pollParms.pollIntervalTime = pollTime5G / 2;
+        else if (spd == SPEED_5000)
             pollParms.pollIntervalTime = (mtu < 4076) ? pollTime5G : (pollTime5G + 10000);
         else if (spd == SPEED_2500)
             pollParms.pollIntervalTime = pollTime2G;

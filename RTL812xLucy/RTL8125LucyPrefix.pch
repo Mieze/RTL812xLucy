@@ -75,7 +75,9 @@ extern "C" {
 
 #define ENABLE_TX_NO_CLOSE
 //#define ENABLE_USE_FIRMWARE_FILE
-//#define USE_NEW_TX_DESC
+/* The RTL8127 requires the new 32-byte tx descriptor format (r8127 sets
+ * 0xEB58 BIT_0 unconditionally on this chip). */
+#define USE_NEW_TX_DESC
 //#define DEBUG_INTR
 
 #include "linux/linux.h"
