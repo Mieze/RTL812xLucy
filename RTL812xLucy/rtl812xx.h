@@ -24,7 +24,7 @@ struct RtlChipInfo {
     UInt32 jumbo_frame_sz;
 };
 
-#define NUM_CHIPS 16
+#define NUM_CHIPS 18
 
 #define FIRMWARE_8125A_3    "rtl8125a-3.fw"
 #define FIRMWARE_8125B_1    "rtl8125b-1.fw"
@@ -37,6 +37,9 @@ struct RtlChipInfo {
 
 #define FIRMWARE_8126A_2    "rtl8126a-2.fw"
 #define FIRMWARE_8126A_3    "rtl8126a-3.fw"
+
+#define FIRMWARE_8127_1     "rtl8127-1.fw"
+#define FIRMWARE_8127_2     "rtl8127-2.fw"
 
 enum eetype {
         EEPROM_TYPE_NONE=0,
@@ -61,6 +64,8 @@ enum mcfg {
     CFG_METHOD_31,
     CFG_METHOD_32,
     CFG_METHOD_33,
+    CFG_METHOD_41,
+    CFG_METHOD_42,
     CFG_METHOD_DEFAULT,
     CFG_METHOD_MAX
 };
@@ -132,6 +137,7 @@ enum mcfg {
 #define D0_SPEED_UP_SPEED_1000       1
 #define D0_SPEED_UP_SPEED_2500       2
 #define D0_SPEED_UP_SPEED_5000       3
+#define D0_SPEED_UP_SPEED_10000      4
 
 #define RTL8125_MAC_MCU_PAGE_SIZE 256 //256 words
 
@@ -280,6 +286,7 @@ enum RTL8125_registers {
     SW_TAIL_PTR1_8125BP = 0x0D38,
     HW_CLO_PTR0_8125BP = 0x0D34,
     HW_CLO_PTR1_8125BP = 0x0D3C,
+    RADMFIFO_PROTECT   = 0x0402,
     DOUBLE_VLAN_CONFIG = 0x1000,
     TX_NEW_CTRL        = 0x203E,
     TNPDS_Q1_LOW_8125  = 0x2100,
@@ -490,6 +497,8 @@ enum RTL8125_register_content {
     /* rtl8125_PHYstatus */
     PowerSaveStatus = 0x80,
     _1000bpsL = 0x80000,
+    _10000bpsF = 0x4000,
+    _10000bpsL = 0x2000,
     _5000bpsF = 0x1000,
     _5000bpsL = 0x800,
     _2500bpsF = 0x400,
@@ -528,6 +537,7 @@ enum RTL8125_register_content {
     EPHYAR_Reg_Mask_v2 = 0x7f,
     EPHYAR_Reg_shift = 16,
     EPHYAR_Data_Mask = 0xffff,
+    EPHYAR_EXT_ADDR = 0x0ffe,
 
     /* CSI access */
     CSIAR_Flag = 0x80000000,
@@ -1018,6 +1028,8 @@ struct rtl8125_private {
 #define NIC_RAMCODE_VERSION_CFG_METHOD_31 (0x0023)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_32 (0x0033)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_33 (0x0060)
+#define NIC_RAMCODE_VERSION_CFG_METHOD_41 (0x0015)
+#define NIC_RAMCODE_VERSION_CFG_METHOD_42 (0x0036)
 
 //hwoptimize
 #define HW_PATCH_SOC_LAN (BIT_0)
@@ -1062,6 +1074,7 @@ static const u16 other_q_intr_mask = (RxOK1 | RxDU1);
 #define HW_SUPP_PHY_LINK_SPEED_GIGA(_M)        ((_M)->HwSuppMaxPhyLinkSpeed >= 1000)
 #define HW_SUPP_PHY_LINK_SPEED_2500M(_M)        ((_M)->HwSuppMaxPhyLinkSpeed >= 2500)
 #define HW_SUPP_PHY_LINK_SPEED_5000M(_M)        ((_M)->HwSuppMaxPhyLinkSpeed >= 5000)
+#define HW_SUPP_PHY_LINK_SPEED_10000M(_M)       ((_M)->HwSuppMaxPhyLinkSpeed >= 10000)
 
 #ifdef __cplusplus
 extern "C" {
@@ -1109,6 +1122,7 @@ extern "C" {
     void rtl8125_init_pci_offset_99(struct rtl8125_private *tp);
     void rtl8125_disable_pci_offset_180(struct rtl8125_private *tp);
     void rtl8125_set_pfm_patch(struct rtl8125_private *tp, bool enable);
+    void rtl8125_set_radm_fifo_prot(struct rtl8125_private *tp, bool enable);
     void rtl8125_set_rms(struct rtl8125_private *tp, u16 rms);
     void rtl8125_disable_rxdvgate(struct rtl8125_private *tp);
     void rtl8125_disable_pci_offset_99(struct rtl8125_private *tp);
@@ -1212,6 +1226,7 @@ void rtl8125_enable_exit_l1_mask(struct rtl8125_private *tp);
 void rtl8125_init_pci_offset_99(struct rtl8125_private *tp);
 void rtl8125_disable_pci_offset_180(struct rtl8125_private *tp);
 void rtl8125_set_pfm_patch(struct rtl8125_private *tp, bool enable);
+void rtl8125_set_radm_fifo_prot(struct rtl8125_private *tp, bool enable);
 void rtl8125_set_rms(struct rtl8125_private *tp, u16 rms);
 void rtl8125_disable_rxdvgate(struct rtl8125_private *tp);
 void rtl8125_disable_pci_offset_99(struct rtl8125_private *tp);

@@ -265,12 +265,19 @@ typedef struct rtlTxMapInfo {
     UInt16 txNextMem2Free;
     SInt16 txNumFreeMem;
     IOMemoryDescriptor *txMemIO[kNumTxMemDesc];
+    /*
+     * Device addresses must come from a mapper-backed IODMACommand:
+     * IOMemoryDescriptor::getPhysicalSegment() yields raw physical
+     * addresses, which the DART rejects on Apple Silicon.
+     */
+    IODMACommand *txDmaCmd[kNumTxMemDesc];
     IOAddressRange txMemRange[kNumTxRanges];
     IOAddressRange txSCRange[kMaxSegs];
 } rtlTxMapInfo;
 
 typedef struct rtlRxMapInfo {
     IOMemoryDescriptor *rxMemIO[kNumRxMemDesc];
+    IODMACommand *rxDmaCmd[kNumRxMemDesc];
     IOAddressRange rxMemRange[kNumRxDesc];
 } rtlRxMapInfo;
 

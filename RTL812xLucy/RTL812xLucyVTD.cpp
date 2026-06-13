@@ -18,6 +18,7 @@
 bool RTL8125::setupRxMap()
 {
     IOMemoryDescriptor *md;
+    IODMACommand *dcmd;
     IOPhysicalAddress pa;
     IOByteCount offset;
     UInt64 word1;
@@ -43,73 +44,86 @@ bool RTL8125::setupRxMap()
     /* Alloc IOMemoryDescriptors. */
     for (i = 0, idx = 0; i < kNumRxMemDesc; i++, idx += kRxMemBatchSize) {
         md = IOMemoryDescriptor::withOptions(&rxMapInfo->rxMemRange[idx], kRxMemBatchSize, 0, kernel_task, (kIOMemoryTypeVirtual | kIODirectionIn | kIOMemoryAsReference), mapper);
-        
+
         if (!md) {
             IOLog("Couldn't alloc IOMemoryDescriptor.\n");
             goto error_rx_desc;
         }
+        rxMapInfo->rxMemIO[i] = md;
+
+        /* The descriptor must be wired before IODMACommand can map it. */
         if (md->prepare() != kIOReturnSuccess) {
             IOLog("IOMemoryDescriptor::prepare() failed.\n");
-            goto error_prep;
+            goto error_rx_desc;
         }
-        rxMapInfo->rxMemIO[i] = md;
+        dcmd = IODMACommand::withSpecification(kIODMACommandOutputHost64, 64, 0, IODMACommand::kMapped, 0, 1, mapper, NULL);
+
+        if (!dcmd) {
+            IOLog("Couldn't alloc rx IODMACommand.\n");
+            goto error_rx_desc;
+        }
+        rxMapInfo->rxDmaCmd[i] = dcmd;
+
+        if (dcmd->setMemoryDescriptor(md) != kIOReturnSuccess) {
+            IOLog("rx setMemoryDescriptor() failed.\n");
+            goto error_rx_desc;
+        }
         offset = 0;
         end = idx + kRxMemBatchSize;
         word1 = (kRxBufferSize | DescOwn);
 
         for (n = idx; n < end; n++) {
+            UInt64 segOffset = offset;
+            UInt32 numSegs = 1;
+            IODMACommand::Segment64 seg;
+
             if (n == kRxLastDesc)
                 word1 |= RingEnd;
-            
-            pa = md->getPhysicalSegment(offset, NULL);
+
+            if (dcmd->gen64IOVMSegments(&segOffset, &seg, &numSegs) != kIOReturnSuccess) {
+                IOLog("rx gen64IOVMSegments() failed.\n");
+                goto error_rx_desc;
+            }
+            pa = seg.fIOVMAddr;
             rxBufArray[n].phyAddr = pa;
-            
-            rxDescArray[i].buf.blen = OSSwapHostToLittleInt64(word1);
-            rxDescArray[i].buf.addr = OSSwapHostToLittleInt64(rxBufArray[i].phyAddr);
+
+            rxDescArray[n].buf.blen = OSSwapHostToLittleInt64(word1);
+            rxDescArray[n].buf.addr = OSSwapHostToLittleInt64(pa);
 
             offset += PAGE_SIZE;
         }
     }
     result = true;
-    
+
 done:
     return result;
-            
-error_prep:
-    md->complete();
-    RELEASE(md);
 
 error_rx_desc:
-    if (rxMapMem) {
-        for (i = 0; i < kNumRxMemDesc; i++) {
-            md = rxMapInfo->rxMemIO[i];
-                            
-            if (md) {
-                md->complete();
-                md->release();
-            }
-            rxMapInfo->rxMemIO[i] = NULL;
-        }
-        IOFree(rxMapMem, kRxMapMemSize);
-        rxMapMem = NULL;
-    }
+    freeRxMap();
     goto done;
 }
 
 void RTL8125::freeRxMap()
 {
     IOMemoryDescriptor *md;
+    IODMACommand *dcmd;
     UInt32 i;
 
     if (rxMapMem) {
         for (i = 0; i < kNumRxMemDesc; i++) {
             md = rxMapInfo->rxMemIO[i];
-                            
+            dcmd = rxMapInfo->rxDmaCmd[i];
+
+            if (dcmd) {
+                dcmd->clearMemoryDescriptor();
+                dcmd->release();
+            }
             if (md) {
                 md->complete();
                 md->release();
             }
             rxMapInfo->rxMemIO[i] = NULL;
+            rxMapInfo->rxDmaCmd[i] = NULL;
         }
         IOFree(rxMapMem, kRxMapMemSize);
         rxMapMem = NULL;
@@ -118,22 +132,32 @@ void RTL8125::freeRxMap()
 
 bool RTL8125::setupTxMap()
 {
+    UInt32 i;
     bool result = false;
 
     txMapMem = IOMallocZero(kTxMapMemSize);
-    
+
     if (!txMapMem) {
         IOLog("Couldn't alloc memory for tx map.\n");
         goto done;
     }
     txMapInfo = (rtlTxMapInfo *)txMapMem;
-    
+
     txMapInfo->txNextMem2Use = 0;
     txMapInfo->txNextMem2Free = 0;
     txMapInfo->txNumFreeMem = kNumTxMemDesc;
 
+    for (i = 0; i < kNumTxMemDesc; i++) {
+        txMapInfo->txDmaCmd[i] = IODMACommand::withSpecification(kIODMACommandOutputHost64, 64, 0, IODMACommand::kMapped, 0, 1, mapper, NULL);
+
+        if (!txMapInfo->txDmaCmd[i]) {
+            IOLog("Couldn't alloc tx IODMACommand.\n");
+            freeTxMap();
+            goto done;
+        }
+    }
     result = true;
-    
+
 done:
     return result;
 }
@@ -144,8 +168,15 @@ void RTL8125::freeTxMap()
 
     if (txMapMem) {
         for (i = 0; i < kNumTxMemDesc; i++) {
+            if (txMapInfo->txDmaCmd[i]) {
+                txMapInfo->txDmaCmd[i]->clearMemoryDescriptor();
+                txMapInfo->txDmaCmd[i]->release();
+                txMapInfo->txDmaCmd[i] = NULL;
+            }
             if (txMapInfo->txMemIO[i]) {
-                txMapInfo->txMemIO[i]->complete();
+                if (txMapInfo->txMemIO[i]->getTag() == kIOMemoryActive)
+                    txMapInfo->txMemIO[i]->complete();
+
                 txMapInfo->txMemIO[i]->release();
                 txMapInfo->txMemIO[i] = NULL;
             }
@@ -235,6 +266,7 @@ UInt32 RTL8125::txMapPacket(mbuf_t packet,
                             UInt32 maxSegs)
 {
     IOMemoryDescriptor *md = NULL;
+    IODMACommand *dcmd = NULL;
     IOAddressRange *srcRange;
     IOAddressRange *dstRange;
     mbuf_t m;
@@ -289,7 +321,7 @@ map:
          */
         if (txMapInfo->txNumFreeMem > 1) {
             dstRange = &txMapInfo->txMemRange[txNextDescIndex];
-            
+
             for (i = 0; i < segIndex; i++) {
                 dstRange[i].address = (srcRange[i].address & ~PAGE_MASK);
                 dstRange[i].length = PAGE_SIZE;
@@ -299,12 +331,13 @@ map:
             saveMem = txMapInfo->txNextMem2Use++;
             txMapInfo->txNextMem2Use &= kTxMemDescMask;
             md = txMapInfo->txMemIO[saveMem];
-            
+            dcmd = txMapInfo->txDmaCmd[saveMem];
+
             if (md) {
                 result = md->initWithOptions(dstRange, segIndex, 0, kernel_task, (kIOMemoryTypeVirtual | kIODirectionOut | kIOMemoryAsReference), mapper);
             } else {
-                md = IOMemoryDescriptor::withAddressRanges(dstRange, segIndex, (kIOMemoryTypeVirtual | kIODirectionOut | kIOMemoryAsReference), kernel_task);
-                
+                md = IOMemoryDescriptor::withOptions(dstRange, segIndex, 0, kernel_task, (kIOMemoryTypeVirtual | kIODirectionOut | kIOMemoryAsReference), mapper);
+
                 if (!md) {
                     DebugLog("Couldn't alloc IOMemoryDescriptor for tx packet.");
                     goto error_map;
@@ -320,14 +353,30 @@ map:
                 DebugLog("Failed to prepare() tx packet.");
                 goto error_map;
             }
+            if (dcmd->setMemoryDescriptor(md) != kIOReturnSuccess) {
+                DebugLog("Failed to set tx memory descriptor.");
+                md->complete();
+                goto error_map;
+            }
             md->setTag(kIOMemoryActive);
             offset = 0;
 
             /*
-             * Get the physical segments and fill in the vector.
+             * Get the device addresses of the segments and fill in the
+             * vector. The DART address must come from the IODMACommand.
              */
             for (i = 0; i < segIndex; i++) {
-                vector[i].location = md->getPhysicalSegment(offset, NULL) + srcRange[i].address;
+                UInt64 segOffset = offset;
+                UInt32 numSegs = 1;
+                IODMACommand::Segment64 seg;
+
+                if (dcmd->gen64IOVMSegments(&segOffset, &seg, &numSegs) != kIOReturnSuccess) {
+                    DebugLog("Failed to gen tx IOVM segment.");
+                    dcmd->clearMemoryDescriptor();
+                    md->complete();
+                    goto error_map;
+                }
+                vector[i].location = seg.fIOVMAddr + srcRange[i].address;
                 vector[i].length = srcRange[i].length;
 
                 //DebugLog("Phy. Segment %u addr: %llx, len: %llu\n", i, vector[i].location, vector[i].length);
@@ -354,10 +403,12 @@ error_map:
 void RTL8125::txUnmapPacket()
 {
     IOMemoryDescriptor *md = txMapInfo->txMemIO[txMapInfo->txNextMem2Free];
-    
+    IODMACommand *dcmd = txMapInfo->txDmaCmd[txMapInfo->txNextMem2Free];
+
+    dcmd->clearMemoryDescriptor();
     md->complete();
     md->setTag(kIOMemoryInactive);
-    
+
     ++(txMapInfo->txNextMem2Free) &= kTxMemDescMask;
     OSAddAtomic16(1, &txMapInfo->txNumFreeMem);
 }
@@ -375,6 +426,7 @@ UInt16 RTL8125::rxMapBuffers(UInt16 index, UInt16 count)
 {
     IOPhysicalAddress pa;
     IOMemoryDescriptor *md;
+    IODMACommand *dcmd;
     UInt64 length;
     IOByteCount offset;
     UInt32 batch = count;
@@ -383,12 +435,14 @@ UInt16 RTL8125::rxMapBuffers(UInt16 index, UInt16 count)
     
     while (batch--) {
         /*
-         * Get the coresponding IOMemoryDescriptor and complete
-         * the mapping;
+         * Get the corresponding IOMemoryDescriptor/IODMACommand and tear
+         * down the previous mapping.
          */
         md = rxMapInfo->rxMemIO[index >> kRxMemBaseShift];
+        dcmd = rxMapInfo->rxDmaCmd[index >> kRxMemBaseShift];
+        dcmd->clearMemoryDescriptor();
         md->complete();
-        
+
         /*
          * Update IORanges with the addresses of the replaced buffers.
          */
@@ -398,7 +452,7 @@ UInt16 RTL8125::rxMapBuffers(UInt16 index, UInt16 count)
             }
         }
         /*
-         * Prepare IOMemoryDescriptor with updated buffer addresses.
+         * Remap with the updated buffer addresses.
          */
         result = md->initWithOptions(&rxMapInfo->rxMemRange[index], kRxMemBatchSize, 0, kernel_task, kIOMemoryTypeVirtual | kIODirectionIn | kIOMemoryAsReference, mapper);
 
@@ -410,20 +464,32 @@ UInt16 RTL8125::rxMapBuffers(UInt16 index, UInt16 count)
             IOLog("Failed to prepare rx IOMemoryDescriptor.\n");
             goto done;
         }
+        if (dcmd->setMemoryDescriptor(md) != kIOReturnSuccess) {
+            IOLog("Failed to set rx memory descriptor.\n");
+            goto done;
+        }
         /*
-         * Get physical addresses of the buffers and update buffer info,
+         * Get device addresses of the buffers and update buffer info,
          * as well as the descriptor ring with new addresses.
          */
         length = (kRxBufferSize | DescOwn);
         offset = 0;
 
         for (i = index, end = index + kRxMemBatchSize; i < end; i++) {
+            UInt64 segOffset = offset;
+            UInt32 numSegs = 1;
+            IODMACommand::Segment64 seg;
+
             if (i == kRxLastDesc)
                 length |= RingEnd;
-            
-            pa = md->getPhysicalSegment(offset, NULL);
+
+            if (dcmd->gen64IOVMSegments(&segOffset, &seg, &numSegs) != kIOReturnSuccess) {
+                IOLog("Failed to gen rx IOVM segment.\n");
+                goto done;
+            }
+            pa = seg.fIOVMAddr;
             rxBufArray[i].phyAddr = pa;
-            
+
             rxDescArray[i].buf.addr = OSSwapHostToLittleInt64(pa);
             rxDescArray[i].buf.blen = OSSwapHostToLittleInt64(length);
 

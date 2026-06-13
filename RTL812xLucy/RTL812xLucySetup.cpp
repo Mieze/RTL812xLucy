@@ -24,6 +24,17 @@
 static const char *onName = "enabled";
 static const char *offName = "disabled";
 
+/*
+ * Descriptor/stat buffers must stay cacheable on Apple Silicon: PCIe DMA is
+ * cache-coherent through the DART, and kIOMapInhibitCache yields a device
+ * mapping on which bzero() (DC ZVA) triggers an unaligned data abort panic.
+ */
+#ifdef __arm64__
+#define kDescMapCacheOption 0
+#else
+#define kDescMapCacheOption kIOMapInhibitCache
+#endif
+
 #define ADV_ALL (ADVERTISED_10baseT_Half | ADVERTISED_10baseT_Full | ADVERTISED_100baseT_Half | ADVERTISED_100baseT_Full | ADVERTISED_1000baseT_Full)
 
 struct rtlMediumTable mediumArray[MIDX_COUNT] = {
@@ -207,7 +218,10 @@ bool RTL8125::setupMediumDict()
     UInt32 i;
     bool result = false;
 
-    if (HW_SUPP_PHY_LINK_SPEED_5000M(tp)) {
+    if (HW_SUPP_PHY_LINK_SPEED_10000M(tp)) {
+        mediumArray[MIDX_AUTO].adv |= (ADVERTISED_2500baseX_Full | RTK_ADVERTISED_5000baseX_Full | ADVERTISED_10000baseT_Full);
+        limit = MIDX_COUNT;
+    } else if (HW_SUPP_PHY_LINK_SPEED_5000M(tp)) {
         mediumArray[MIDX_AUTO].adv |= (ADVERTISED_2500baseX_Full | RTK_ADVERTISED_5000baseX_Full);
         limit = MIDX_10000FD;
     } else if (HW_SUPP_PHY_LINK_SPEED_2500M(tp)) {
@@ -343,7 +357,7 @@ bool RTL8125::setupRxResources()
     rxBufArray = (rtlRxBufferInfo *)rxBufArrayMem;
 
     /* Create receiver descriptor array. */
-    rxBufDesc = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(kernel_task, (kIODirectionInOut | kIOMemoryPhysicallyContiguous | kIOMemoryHostPhysicallyContiguous | kIOMapInhibitCache), kRxDescSize, 0xFFFFFFFFFFFFFF00ULL);
+    rxBufDesc = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(kernel_task, (kIODirectionInOut | kIOMemoryPhysicallyContiguous | kIOMemoryHostPhysicallyContiguous | kDescMapCacheOption), kRxDescSize, 0xFFFFFFFFFFFFFF00ULL);
     
     if (!rxBufDesc) {
         IOLog("Couldn't alloc rxBufDesc.\n");
@@ -466,7 +480,7 @@ bool RTL8125::setupTxResources()
     txMbufArray = (mbuf_t *)txBufArrayMem;
     
     /* Create transmitter descriptor array. */
-    txBufDesc = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(kernel_task, (kIODirectionInOut | kIOMemoryPhysicallyContiguous | kIOMemoryHostPhysicallyContiguous | kIOMapInhibitCache), kTxDescSize, 0xFFFFFFFFFFFFFF00ULL);
+    txBufDesc = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(kernel_task, (kIODirectionInOut | kIOMemoryPhysicallyContiguous | kIOMemoryHostPhysicallyContiguous | kDescMapCacheOption), kTxDescSize, 0xFFFFFFFFFFFFFF00ULL);
             
     if (!txBufDesc) {
         IOLog("Couldn't alloc txBufDesc.\n");
@@ -558,7 +572,7 @@ bool RTL8125::setupStatResources()
     }
 
     /* Create statistics dump buffer. */
-    statBufDesc = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(kernel_task, (kIODirectionIn | kIOMemoryPhysicallyContiguous | kIOMemoryHostPhysicallyContiguous | kIOMapInhibitCache), sizeof(RtlStatData), 0xFFFFFFFFFFFFFF00ULL);
+    statBufDesc = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(kernel_task, (kIODirectionIn | kIOMemoryPhysicallyContiguous | kIOMemoryHostPhysicallyContiguous | kDescMapCacheOption), sizeof(RtlStatData), 0xFFFFFFFFFFFFFF00ULL);
     
     if (!statBufDesc) {
         IOLog("Couldn't alloc statBufDesc.\n");
@@ -571,7 +585,7 @@ bool RTL8125::setupStatResources()
     }
     statData = (RtlStatData *)statBufDesc->getBytesNoCopy();
     
-    statDescDmaCmd = IODMACommand::withSpecification(kIODMACommandOutputHost64, 64, 0, IODMACommand::kMapped, 0, 1);
+    statDescDmaCmd = IODMACommand::withSpecification(kIODMACommandOutputHost64, 64, 0, IODMACommand::kMapped, 0, 1, mapper, NULL);
     
     if (!statDescDmaCmd) {
         IOLog("Couldn't alloc statDescDmaCmd.\n");
