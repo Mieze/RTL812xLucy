@@ -7,13 +7,14 @@ A new macOS driver for the Realtek RTL812x family of 2.5GBit and 5Gbit Ethernet 
 
 **Key Features of RTL812xLucy**
 
-* Supports all versions of Realtek's RTL8125 2.5Gbit and RTL8126 5Gbit Ethernet Controllers:
+* Supports all versions of Realtek's RTL8125 2.5Gbit, RTL8126 5Gbit and RTL8127 10Gbit Ethernet Controllers:
   - RTL8125A
   - RTL8125B
   - RTL8125BP
   - RTL8125CP
   - RTL8125D
   - RTL8126A
+  - RTL8127 (including the RTL8127ATF SFP+ fiber variant)
 * Support for AppleVTD (Tahoe included), but also works without it.
 * TCP segmentation offload with IPv4 and IPv6.
 * Support for TCP/IPv4, UDP/IPv4, TCP/IPv6 and UDP/IPv6 checksum offload.
@@ -46,6 +47,18 @@ Although RTL812x supports AppleVTD, there is no guarantee that your mainboard al
 **Installation**
 - Use OpenCore to inject the driver.
 <img width="683" height="145" alt="Bildschirmfoto 2026-02-06 um 20 33 23" src="https://github.com/user-attachments/assets/3a75f549-1ba2-4059-8bb4-d89b8b8b06ed" />
+
+**Apple Silicon (arm64e)**
+
+The driver also builds as a universal binary and runs on Apple Silicon Macs
+with the controller in a PCIe slot or Thunderbolt enclosure
+(`IOPCITunnelCompatible`). The arm64e build uses the standard macOS SDK plus
+the header overlay in `KernelSPI/`, which re-declares the IONetworkingFamily
+polled-mode SPI that Apple strips from the public SDK (regenerate it with
+`KernelSPI/gen_spi_headers.py` after a major SDK update). On Apple Silicon the
+IOMMU is DART, so the mapper-aware DMA path is used automatically. Loading an
+unsigned development build requires Reduced Security with user management of
+kernel extensions enabled.
 
 **Contributions**
 
