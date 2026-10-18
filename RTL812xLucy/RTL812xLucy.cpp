@@ -195,6 +195,8 @@ bool RTL8125::init(OSDictionary *properties)
         statBufDesc = NULL;
         statPhyAddr = (IOPhysicalAddress64)NULL;
         statData = NULL;
+        phyLock = NULL;
+        temperature = 0;
         rxPacketHead = NULL;
         rxPacketTail = NULL;
         rxPacketSize = 0;
@@ -204,17 +206,9 @@ bool RTL8125::init(OSDictionary *properties)
         
         mtu = ETH_DATA_LEN;
         powerState = 0;
-        //speed = 0;
-        //duplex = DUPLEX_FULL;
-        //autoneg = AUTONEG_ENABLE;
-        //flowCtl = kFlowControlOff;
-        //eeeCap = 0;
         memset(&linuxData, 0, sizeof(struct rtl8125_private));
         linuxData.mmio_addr = NULL;
         linuxData.aspm = 0;
-        //linuxData.configEEE = 0;
-        //linuxData.s0MagicPacket = 0;
-        //linuxData.hwoptimize = 0;
         linuxData.DASH = 0;
         pciDeviceData.vendor = 0;
         pciDeviceData.device = 0;
@@ -222,7 +216,6 @@ bool RTL8125::init(OSDictionary *properties)
         pciDeviceData.subsystem_device = 0;
         linuxData.pci_dev = &pciDeviceData;
         rtlChipInfos = &rtlChipInfo[0];
-        //pollInterval2500 = 0;
         wolCapable = false;
         enableTSO4 = false;
         enableTSO6 = false;
@@ -274,6 +267,7 @@ void RTL8125::free()
     freeTxResources();
     freeRxResources();
     freeStatResources();
+    freePhyResources();
     
     DebugLog("free() <===\n");
     
@@ -330,6 +324,10 @@ bool RTL8125::start(IOService *provider)
     }
     commandGate->retain();
     
+    if (!setupPhyResources()) {
+        IOLog("Error allocating PHY resources.\n");
+        goto error_phy;
+    }
     if (!setupTxResources()) {
         IOLog("Error allocating Tx resources.\n");
         goto error_dma1;
@@ -372,8 +370,11 @@ error_dma2:
     freeTxResources();
     
 error_dma1:
+    freePhyResources();
+    
+error_phy:
     RELEASE(commandGate);
-        
+
 error_gate:
     RELEASE(mediumDict);
 
@@ -416,7 +417,8 @@ void RTL8125::stop(IOService *provider)
     freeStatResources();
     freeRxResources();
     freeTxResources();
-
+    freePhyResources();
+    
     RELEASE(baseMap);
     linuxData.mmio_addr = NULL;
 
@@ -512,8 +514,8 @@ IOReturn RTL8125::enable(IONetworkInterface *netif)
     if (!selectedMedium) {
         DebugLog("No medium selected. Falling back to autonegotiation.\n");
         selectedMedium = mediumTable[MIDX_AUTO];
+        setCurrentMedium(selectedMedium);
     }
-    selectMedium(selectedMedium);
     rtl812xEnable();
     
     /* We have to enable the interrupt because we are using a msi interrupt. */
@@ -1048,16 +1050,11 @@ IOReturn RTL8125::setHardwareAddress(const IOEthernetAddress *addr)
 
 IOReturn RTL8125::selectMedium(const IONetworkMedium *medium)
 {
-    struct rtl8125_private *tp = &linuxData;
     IOReturn result = kIOReturnSuccess;
-    UInt32 index;
     
     DebugLog("selectMedium() ===>\n");
     
     if (medium) {
-        index = medium->getIndex();
-        
-        rtl812xMedium2Adv(tp, index);
         setCurrentMedium(medium);
         setLinkDown();
     }
@@ -1345,85 +1342,7 @@ void RTL8125::rtl812xCheckLinkStatus(struct rtl8125_private *tp)
         timerSource->wakeAtTime(now + timerInterval);
     }
 }
-/*
-void RTL8125::checkLinkStatus()
-{
-    struct rtl8125_private *tp = &linuxData;
-    UInt64 now;
-    UInt16 currLinkState;
-    
-    DebugLog("Link change interrupt: Check link status.\n");
 
-    currLinkState = RTL_R16(tp, PHYstatus);
-    
-    if (currLinkState & LinkStatus) {
-        // Get EEE mode.
-        eeeMode = getEEEMode();
-        
-        // Get link speed, duplex and flow-control mode.
-        if (currLinkState & (TxFlowCtrl | RxFlowCtrl)) {
-            flowCtl = kFlowControlOn;
-        } else {
-            flowCtl = kFlowControlOff;
-        }
-        if (currLinkState & _2500bpsF) {
-            speed = SPEED_2500;
-            duplex = DUPLEX_FULL;
-        } else if (currLinkState & _1000bpsF) {
-                speed = SPEED_1000;
-                duplex = DUPLEX_FULL;
-        } else if (currLinkState & _100bps) {
-            speed = SPEED_100;
-            
-            if (currLinkState & FullDup) {
-                duplex = DUPLEX_FULL;
-            } else {
-                duplex = DUPLEX_HALF;
-            }
-        } else {
-            speed = SPEED_10;
-            
-            if (currLinkState & FullDup) {
-                duplex = DUPLEX_FULL;
-            } else {
-                duplex = DUPLEX_HALF;
-            }
-        }
-        setupRTL8125();
-        
-        if (tp->mcfg == CFG_METHOD_2) {
-            if (RTL_R16(tp, PHYstatus) & FullDup)
-                RTL_W32(tp, TxConfig, (RTL_R32(tp, TxConfig) | (BIT_24 | BIT_25)) & ~BIT_19);
-            else
-                RTL_W32(tp, TxConfig, (RTL_R32(tp, TxConfig) | BIT_25) & ~(BIT_19 | BIT_24));
-        }
-
-        if ((tp->mcfg == CFG_METHOD_2 || tp->mcfg == CFG_METHOD_3 ||
-             tp->mcfg == CFG_METHOD_4 || tp->mcfg == CFG_METHOD_5) &&
-            (RTL_R16(tp, PHYstatus) & _10bps))
-                rtl8125_enable_eee_plus(tp);
-
-        setLinkUp();
-        clock_get_uptime(&now);
-        timerSource->wakeAtTime(now + timerInterval);
-
-        rtl8125_mdio_write(tp, 0x1F, 0x0000);
-        linuxData.phy_reg_anlpar = rtl8125_mdio_read(tp, MII_LPA);
-    } else {
-        tp->phy_reg_anlpar = 0;
-
-        if (tp->mcfg == CFG_METHOD_2 ||
-            tp->mcfg == CFG_METHOD_3 ||
-            tp->mcfg == CFG_METHOD_4 ||
-            tp->mcfg == CFG_METHOD_5)
-                rtl8125_disable_eee_plus(tp);
-
-        // Stop watchdog and statistics updates.
-        timerSource->cancelTimeout();
-        setLinkDown();
-    }
-}
-*/
 void RTL8125::interruptOccurred(OSObject *client, IOInterruptEventSource *src, int count)
 {
     struct rtl8125_private *tp = &linuxData;
@@ -1775,7 +1694,7 @@ void RTL8125::setLinkDown()
     intrMask = intrMaskRxTx;
     RTL_W32(tp, IMR0_8125, intrMask);
 
-    rtl812xSetPhyMedium(tp, tp->autoneg, tp->speed, tp->duplex, tp->advertising);
+    rtl812xSetPhyMedium(tp, getSelectedMedium()->getIndex());
     
     IOLog("Link down on en%u\n", netif->getUnitNumber());
 }
@@ -1860,18 +1779,6 @@ void RTL8125::statUpdateThread()
     }
 }
 
-UInt32 RTL8125::getTemperature()
-{
-    UInt32 value;
-    
-    if (hasSensor)
-        commandGate->runAction(readThermalSensor, &value);
-    else
-        value = kInvalidTemp;
-    
-    return value;
-}
-
 void RTL8125::getHwStatistics(RtlStatData *hwStats)
 {
     if (statData && hwStats) {
@@ -1915,6 +1822,34 @@ void RTL8125::getHwStatistics(RtlStatData *hwStats)
         hwStats->tdu = OSSwapLittleToHostInt32(statData->tdu);
         hwStats->rdu = OSSwapLittleToHostInt32(statData->rdu);
     }
+}
+
+
+#pragma mark --- temperature sensor methods ---
+
+UInt32 RTL8125::getTemperature()
+{
+    struct rtl8125_private *tp = &linuxData;
+    u16 ts_digout;
+
+    if (hasSensor) {
+        IOSimpleLockLock(phyLock);
+        
+        ts_digout = mdio_direct_read_phy_ocp(tp, 0xBD84);
+        ts_digout &= 0x3ff;
+        
+        //DebugLog("Raw sensor value: %u\n", ts_digout);
+
+        if (ts_digout <= 512) {
+            temperature = ts_digout / 2;
+        } else {
+            temperature = (512 - (ts_digout - 512)) / 2;
+        }
+        IOSimpleLockUnlock(phyLock);
+    } else {
+        temperature = kInvalidTemp;
+    }
+    return temperature;
 }
 
 #pragma mark --- miscellaneous functions ---

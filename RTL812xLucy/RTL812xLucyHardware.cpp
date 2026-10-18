@@ -353,8 +353,6 @@ bool RTL8125::rtl812xInit()
         goto done;
     }
 
-    tp->phy_reset_enable = rtl8125_xmii_reset_enable;
-    tp->phy_reset_pending = rtl8125_xmii_reset_pending;
     tp->link_ok = rtl8125_xmii_link_ok;
 
     rtl8125_get_bios_setting(tp);
@@ -482,12 +480,12 @@ void RTL8125::rtl812xEnable()
     rtl8125_exit_oob(tp);
     rtl812xHwInit(tp);
     rtl8125_hw_reset(tp);
-    rtl8125_powerup_pll(tp);
+    rtl812xPowerupPll(tp);
     rtl8125_hw_ephy_config(tp);
-    rtl8125_hw_phy_config(tp);
+    rtl812xHwPhyConfig(tp);
     rtl812xHwConfig(tp);
     
-    rtl812xSetPhyMedium(tp, tp->autoneg, tp->speed, tp->duplex, tp->advertising);
+    rtl812xSetPhyMedium(tp, getSelectedMedium()->getIndex());
 }
 
 void RTL8125::rtl812xDisable()
@@ -500,7 +498,7 @@ void RTL8125::rtl812xDisable()
     clearRxTxRings();
     
     rtl8125_hw_d3_para(tp);
-    rtl8125_powerdown_pll(tp);
+    rtl812xPowerdownPll(tp);
     
     if (HW_DASH_SUPPORT_DASH(tp))
         rtl8125_driver_stop(tp);
@@ -836,6 +834,9 @@ void RTL8125::rtl812xHwConfig(struct rtl8125_private *tp)
 
     /* Set receiver mode. */
     setMulticastMode(test_bit(__M_CAST, &stateFlags));
+    
+    if (test_bit(__PROMISC, &stateFlags))
+        setPromiscuousMode(true);
 
     #ifdef ENABLE_DASH_SUPPORT
             if (tp->DASH && !tp->dash_printer_enabled)
@@ -878,28 +879,21 @@ void RTL8125::rtl812xSetOffloadFeatures(bool active)
         IOLog("Error setting hardware offload: %x!\n", offload);
 }
 
-void RTL8125::rtl812xSetPhyMedium(struct rtl8125_private *tp, UInt8 autoneg, UInt32 speed, UInt8 duplex, UInt64 adv)
+void RTL8125::rtl812xSetPhyMedium(struct rtl8125_private *tp, UInt32 index)
 {
+    UInt64 adv;
     int auto_nego = 0;
     int giga_ctrl = 0;
     int ctrl_2500 = 0;
-
-    DebugLog("speed: %u, duplex: %u, adv: %llx\n", static_cast<unsigned int>(speed), duplex, adv);
     
-    if (!rtl8125_is_speed_mode_valid(speed)) {
-        if (HW_SUPP_PHY_LINK_SPEED_5000M(tp))
-            speed = SPEED_5000;
-        else if (HW_SUPP_PHY_LINK_SPEED_2500M(tp))
-            speed = SPEED_2500;
-        else
-            speed = SPEED_1000;
+    adv = rtl812xMedium2Adv(tp, index);
 
-        duplex = DUPLEX_FULL;
-        adv |= tp->advertising;
-    }
+    DebugLog("speed: %u, duplex: %u, flowctrl: %u, adv: %llx\n", static_cast<unsigned int>(tp->speed), tp->duplex, tp->fcpause, adv);
     
+    IOSimpleLockLock(phyLock);
+
     /* Enable or disable EEE support according to selected medium. */
-    if (tp->eee.eee_enabled && (autoneg == AUTONEG_ENABLE)) {
+    if (tp->eee.eee_enabled) {
         rtl8125_enable_eee(tp);
         DebugLog("Enable EEE support.\n");
     } else {
@@ -913,64 +907,54 @@ void RTL8125::rtl812xSetPhyMedium(struct rtl8125_private *tp, UInt8 autoneg, UIn
     ctrl_2500 = mdio_direct_read_phy_ocp(tp, 0xA5D4);
     ctrl_2500 &= ~(RTK_ADVERTISE_2500FULL | RTK_ADVERTISE_5000FULL);
 
-    if (autoneg == AUTONEG_ENABLE) {
-        /*n-way force*/
-        auto_nego = rtl8125_mdio_read(tp, MII_ADVERTISE);
-        auto_nego &= ~(ADVERTISE_10HALF | ADVERTISE_10FULL |
-                       ADVERTISE_100HALF | ADVERTISE_100FULL |
-                       ADVERTISE_PAUSE_CAP | ADVERTISE_PAUSE_ASYM);
+    /*n-way force*/
+    auto_nego = rtl8125_mdio_read(tp, MII_ADVERTISE);
+    auto_nego &= ~(ADVERTISE_10HALF | ADVERTISE_10FULL |
+                   ADVERTISE_100HALF | ADVERTISE_100FULL |
+                   ADVERTISE_PAUSE_CAP | ADVERTISE_PAUSE_ASYM);
 
-        if (adv & ADVERTISED_10baseT_Half)
-                auto_nego |= ADVERTISE_10HALF;
-        
-        if (adv & ADVERTISED_10baseT_Full)
-                auto_nego |= ADVERTISE_10FULL;
-        
-        if (adv & ADVERTISED_100baseT_Half)
-                auto_nego |= ADVERTISE_100HALF;
-        
-        if (adv & ADVERTISED_100baseT_Full)
-                auto_nego |= ADVERTISE_100FULL;
-        
-        if (adv & ADVERTISED_1000baseT_Half)
-                giga_ctrl |= ADVERTISE_1000HALF;
-        
-        if (adv & ADVERTISED_1000baseT_Full)
-                giga_ctrl |= ADVERTISE_1000FULL;
-        
-        if (adv & ADVERTISED_2500baseX_Full)
-                ctrl_2500 |= RTK_ADVERTISE_2500FULL;
-        
-        if (HW_SUPP_PHY_LINK_SPEED_5000M(tp)) {
-            if (adv & RTK_ADVERTISED_5000baseX_Full)
-                ctrl_2500 |= RTK_ADVERTISE_5000FULL;
-        }
-
-        //flow control
-        if (tp->fcpause == rtl8125_fc_full)
-            auto_nego |= ADVERTISE_PAUSE_CAP | ADVERTISE_PAUSE_ASYM;
-
-        tp->phy_auto_nego_reg = auto_nego;
-        tp->phy_1000_ctrl_reg = giga_ctrl;
-
-        tp->phy_2500_ctrl_reg = ctrl_2500;
-
-        rtl8125_mdio_write(tp, 0x1f, 0x0000);
-        rtl8125_mdio_write(tp, MII_ADVERTISE, auto_nego);
-        rtl8125_mdio_write(tp, MII_CTRL1000, giga_ctrl);
-        mdio_direct_write_phy_ocp(tp, 0xA5D4, ctrl_2500);
-        rtl8125_phy_restart_nway(tp);
-    } else {
-        /*true force*/
-        if (speed == SPEED_10 || speed == SPEED_100)
-            rtl8125_phy_setup_force_mode(tp, speed, duplex);
-        else
-            return;
+    if (adv & ADVERTISED_10baseT_Half)
+            auto_nego |= ADVERTISE_10HALF;
+    
+    if (adv & ADVERTISED_10baseT_Full)
+            auto_nego |= ADVERTISE_10FULL;
+    
+    if (adv & ADVERTISED_100baseT_Half)
+            auto_nego |= ADVERTISE_100HALF;
+    
+    if (adv & ADVERTISED_100baseT_Full)
+            auto_nego |= ADVERTISE_100FULL;
+    
+    if (adv & ADVERTISED_1000baseT_Half)
+            giga_ctrl |= ADVERTISE_1000HALF;
+    
+    if (adv & ADVERTISED_1000baseT_Full)
+            giga_ctrl |= ADVERTISE_1000FULL;
+    
+    if (adv & ADVERTISED_2500baseX_Full)
+            ctrl_2500 |= RTK_ADVERTISE_2500FULL;
+    
+    if (HW_SUPP_PHY_LINK_SPEED_5000M(tp)) {
+        if (adv & RTK_ADVERTISED_5000baseX_Full)
+            ctrl_2500 |= RTK_ADVERTISE_5000FULL;
     }
-    tp->autoneg = autoneg;
-    tp->speed = speed;
-    tp->duplex = duplex;
-    tp->advertising = adv;
+
+    //flow control
+    if (tp->fcpause == rtl8125_fc_full)
+        auto_nego |= ADVERTISE_PAUSE_CAP | ADVERTISE_PAUSE_ASYM;
+
+    tp->phy_auto_nego_reg = auto_nego;
+    tp->phy_1000_ctrl_reg = giga_ctrl;
+
+    tp->phy_2500_ctrl_reg = ctrl_2500;
+
+    rtl8125_mdio_write(tp, 0x1f, 0x0000);
+    rtl8125_mdio_write(tp, MII_ADVERTISE, auto_nego);
+    rtl8125_mdio_write(tp, MII_CTRL1000, giga_ctrl);
+    mdio_direct_write_phy_ocp(tp, 0xA5D4, ctrl_2500);
+    rtl8125_phy_restart_nway(tp);
+
+    IOSimpleLockUnlock(phyLock);
 
     rtl8125_set_d0_speedup_speed(tp);
 }
@@ -1014,18 +998,26 @@ void RTL8125::rtl812xLinkOnPatch(struct rtl8125_private *tp)
     if (tp->RequiredPfmPatch)
         rtl8125_set_pfm_patch(tp, (status & _10bps) ? 1 : 0);
     
+    IOSimpleLockLock(phyLock);
+
     tp->phy_reg_aner = rtl8125_mdio_read(tp, MII_EXPANSION);
     tp->phy_reg_anlpar = rtl8125_mdio_read(tp, MII_LPA);
     tp->phy_reg_gbsr = rtl8125_mdio_read(tp, MII_STAT1000);
     tp->phy_reg_status_2500 = mdio_direct_read_phy_ocp(tp, 0xA5D6);
+    
+    IOSimpleLockUnlock(phyLock);
 }
 
 void RTL8125::rtl812xLinkDownPatch(struct rtl8125_private *tp)
 {
+    IOSimpleLockLock(phyLock);
+
     tp->phy_reg_aner = 0;
     tp->phy_reg_anlpar = 0;
     tp->phy_reg_gbsr = 0;
     tp->phy_reg_status_2500 = 0;
+
+    IOSimpleLockUnlock(phyLock);
 
     switch (tp->mcfg) {
         case CFG_METHOD_2:
@@ -1060,6 +1052,8 @@ void RTL8125::rtl812xGetEEEMode(struct rtl8125_private *tp)
     sup = tp->eee.supported;
     DebugLog("EEE supported: 0x%0x\n", sup);
 
+    IOSimpleLockLock(phyLock);
+
     /* Get advertisement EEE */
     val = mdio_direct_read_phy_ocp(tp, 0xA5D0);
     adv = mmd_eee_adv_to_ethtool_adv_t(val);
@@ -1078,6 +1072,8 @@ void RTL8125::rtl812xGetEEEMode(struct rtl8125_private *tp)
 
     val = mdio_direct_read_phy_ocp(tp, 0xA6D0);
     
+    IOSimpleLockUnlock(phyLock);
+
     if (val & RTK_LPA_EEE_ADVERTISE_2500FULL)
         lp |= ADVERTISED_2500baseX_Full;
     
@@ -1086,7 +1082,6 @@ void RTL8125::rtl812xGetEEEMode(struct rtl8125_private *tp)
 
     tp->eee.eee_enabled = !!val;
     tp->eee.eee_active = !!(sup & adv & lp);
-
 }
 
 UInt32 RTL8125::rtl812xGetHwCloPtr(struct rtl8125_private *tp)
@@ -1121,23 +1116,305 @@ void RTL8125::rtl812xSetMrrs(struct rtl8125_private *tp, UInt8 setting)
     pciDevice->extendedConfigWrite8(0x79, devctl);
 }
 
-IOReturn RTL8125::readThermalSensor(OSObject *owner, void *arg1, void *arg2, void *arg3, void *arg4)
+void RTL8125::rtl812xXmiiResetEnable(struct rtl8125_private *tp)
 {
-    RTL8125 *me = OSDynamicCast(RTL8125, owner);
-    UInt32 *value = (UInt32 *)arg1;
-    u16 ts_digout;
+    int ret;
 
-    if (me) {
-        ts_digout = mdio_direct_read_phy_ocp(&me->linuxData, 0xBD84);
-        ts_digout &= 0x3ff;
+    if (!rtl8125_is_in_phy_disable_mode(tp)) {
+        IOSimpleLockLock(phyLock);
         
-        //DebugLog("Raw sensor value: %u\n", ts_digout);
-
-        if (ts_digout <= 512) {
-            *value = ts_digout / 2;
-        } else {
-            *value = (512 - (ts_digout - 512)) / 2;
-        }
+        rtl8125_mdio_write(tp, 0x1f, 0x0000);
+        rtl8125_mdio_write(tp, MII_ADVERTISE, rtl8125_mdio_read(tp, MII_ADVERTISE) &
+                           ~(ADVERTISE_10HALF | ADVERTISE_10FULL |
+                             ADVERTISE_100HALF | ADVERTISE_100FULL));
+        rtl8125_mdio_write(tp, MII_CTRL1000, rtl8125_mdio_read(tp, MII_CTRL1000) &
+                           ~(ADVERTISE_1000HALF | ADVERTISE_1000FULL));
+        mdio_direct_write_phy_ocp(tp, 0xA5D4, mdio_direct_read_phy_ocp(tp, 0xA5D4) &
+                                  ~(RTK_ADVERTISE_2500FULL | RTK_ADVERTISE_5000FULL));
+        rtl8125_mdio_write(tp, MII_BMCR, BMCR_RESET | BMCR_ANENABLE);
+        
+        ret = rtl8125_wait_phy_reset_complete(tp);
+        
+        IOSimpleLockUnlock(phyLock);
+        
+        if (ret)
+            DebugLog("PHY reset failed.\n");
     }
-    return kIOReturnSuccess;
+}
+
+void RTL8125::rtl812xHwPhyConfig(struct rtl8125_private *tp)
+{
+    if (!tp->resume_not_chg_speed) {
+        
+        rtl812xXmiiResetEnable(tp);
+        
+        IOSimpleLockLock(phyLock);
+
+#ifndef ENABLE_USE_FIRMWARE_FILE
+        if (!tp->rtl_fw) {
+            if (tp->mcfg < CFG_METHOD_31)
+                rtl8125_set_hw_phy_before_init_phy_mcu(tp);
+            
+            rtl8125_init_hw_phy_mcu(tp);
+        }
+#endif
+        
+        switch (tp->mcfg) {
+            case CFG_METHOD_2:
+                rtl8125_hw_phy_config_8125a_1(tp);
+                break;
+                
+            case CFG_METHOD_3:
+            case CFG_METHOD_6:
+                rtl8125_hw_phy_config_8125a_2(tp);
+                break;
+                
+            case CFG_METHOD_4:
+                rtl8125_hw_phy_config_8125b_1(tp);
+                break;
+                
+            case CFG_METHOD_5:
+            case CFG_METHOD_7:
+                rtl8125_hw_phy_config_8125b_2(tp);
+                break;
+                
+            case CFG_METHOD_8:
+                rtl8125_hw_phy_config_8125bp_1(tp);
+                break;
+                
+            case CFG_METHOD_9:
+                rtl8125_hw_phy_config_8125bp_2(tp);
+                break;
+                
+            case CFG_METHOD_10:
+                rtl8125_hw_phy_config_8125d_1(tp);
+                break;
+                
+            case CFG_METHOD_11:
+            case CFG_METHOD_13:
+                rtl8125_hw_phy_config_8125d_2(tp);
+                break;
+                
+            case CFG_METHOD_12:
+                rtl8125_hw_phy_config_8125cp_1(tp);
+                break;
+                
+            case CFG_METHOD_31:
+                rtl8126_hw_phy_config_8126a_1(tp);
+                break;
+                
+            case CFG_METHOD_32:
+                rtl8126_hw_phy_config_8126a_2(tp);
+                break;
+                
+            case CFG_METHOD_33:
+                rtl8126_hw_phy_config_8126a_3(tp);
+                break;
+        }
+        
+        //legacy force mode(Chap 22)
+        rtl8125_clear_eth_phy_ocp_bit(tp, 0xA5B4, BIT_15);
+        
+        /*ocp phy power saving*/
+        /*
+         if (tp->aspm) {
+         if (tp->mcfg == CFG_METHOD_2 || tp->mcfg == CFG_METHOD_3 ||
+         tp->mcfg == CFG_METHOD_6)
+         rtl8125_enable_ocp_phy_power_saving(tp);
+         }
+         */
+        
+        rtl8125_mdio_write(tp, 0x1F, 0x0000);
+        
+        if (HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp)) {
+            if (tp->eee.eee_enabled)
+                rtl8125_enable_eee(tp);
+            else
+                rtl8125_disable_eee(tp);
+        }
+        IOSimpleLockUnlock(phyLock);
+    }
+}
+
+int RTL8125::rtl812xSetWolLinkSpeed(struct rtl8125_private *tp)
+{
+    int auto_nego = 0;
+    int giga_ctrl;
+    int ctrl_2500;
+    u64 adv;
+    u16 anlpar;
+    u16 gbsr;
+    u16 status_2500;
+    u16 aner;
+
+    IOSimpleLockLock(phyLock);
+
+    if (tp->autoneg != AUTONEG_ENABLE)
+        goto exit;
+
+    rtl8125_mdio_write(tp, 0x1F, 0x0000);
+
+    auto_nego = rtl8125_mdio_read(tp, MII_ADVERTISE);
+    auto_nego &= ~(ADVERTISE_10HALF | ADVERTISE_10FULL
+                   | ADVERTISE_100HALF | ADVERTISE_100FULL);
+
+    giga_ctrl = rtl8125_mdio_read(tp, MII_CTRL1000);
+    giga_ctrl &= ~(ADVERTISE_1000HALF | ADVERTISE_1000FULL);
+
+    ctrl_2500 = mdio_direct_read_phy_ocp(tp, 0xA5D4);
+    ctrl_2500 &= ~(RTK_ADVERTISE_2500FULL | RTK_ADVERTISE_5000FULL);
+
+    aner = tp->phy_reg_aner;
+    anlpar = tp->phy_reg_anlpar;
+    gbsr = tp->phy_reg_gbsr;
+    status_2500 = tp->phy_reg_status_2500;
+    
+    if (tp->link_ok(tp)) {
+        aner = rtl8125_mdio_read(tp, MII_EXPANSION);
+        anlpar = rtl8125_mdio_read(tp, MII_LPA);
+        gbsr = rtl8125_mdio_read(tp, MII_STAT1000);
+        status_2500 = mdio_direct_read_phy_ocp(tp, 0xA5D6);
+    }
+
+    adv = tp->advertising;
+    
+    if ((aner | anlpar | gbsr | status_2500) == 0) {
+        int auto_nego_tmp = 0;
+        
+        if (adv & ADVERTISED_10baseT_Half)
+            auto_nego_tmp |= ADVERTISE_10HALF;
+        if (adv & ADVERTISED_10baseT_Full)
+            auto_nego_tmp |= ADVERTISE_10FULL;
+        if (adv & ADVERTISED_100baseT_Half)
+            auto_nego_tmp |= ADVERTISE_100HALF;
+        if (adv & ADVERTISED_100baseT_Full)
+            auto_nego_tmp |= ADVERTISE_100FULL;
+
+        if (auto_nego_tmp == 0)
+            goto exit;
+
+        auto_nego |= auto_nego_tmp;
+        goto skip_check_lpa;
+    }
+    if (!(aner & EXPANSION_NWAY))
+        goto exit;
+
+    if ((adv & ADVERTISED_10baseT_Half) && (anlpar & LPA_10HALF))
+        auto_nego |= ADVERTISE_10HALF;
+    else if ((adv & ADVERTISED_10baseT_Full) && (anlpar & LPA_10FULL))
+        auto_nego |= ADVERTISE_10FULL;
+    else if ((adv & ADVERTISED_100baseT_Half) && (anlpar & LPA_100HALF))
+        auto_nego |= ADVERTISE_100HALF;
+    else if ((adv & ADVERTISED_100baseT_Full) && (anlpar & LPA_100FULL))
+        auto_nego |= ADVERTISE_100FULL;
+    else if (adv & ADVERTISED_1000baseT_Half && (gbsr & LPA_1000HALF))
+        giga_ctrl |= ADVERTISE_1000HALF;
+    else if (adv & ADVERTISED_1000baseT_Full && (gbsr & LPA_1000FULL))
+        giga_ctrl |= ADVERTISE_1000FULL;
+    else if (adv & ADVERTISED_2500baseX_Full && (status_2500 & RTK_LPA_ADVERTISE_2500FULL))
+        ctrl_2500 |= RTK_ADVERTISE_2500FULL;
+    else if (adv & RTK_ADVERTISED_5000baseX_Full && (status_2500 & RTK_LPA_ADVERTISE_5000FULL))
+        ctrl_2500 |= RTK_ADVERTISE_5000FULL;
+    else
+        goto exit;
+
+skip_check_lpa:
+    if (tp->DASH)
+            auto_nego |= (ADVERTISE_100FULL | ADVERTISE_100HALF | ADVERTISE_10HALF | ADVERTISE_10FULL);
+
+#ifdef CONFIG_DOWN_SPEED_100
+    auto_nego |= (ADVERTISE_100FULL | ADVERTISE_100HALF | ADVERTISE_10HALF | ADVERTISE_10FULL);
+#endif
+
+    rtl8125_mdio_write(tp, MII_ADVERTISE, auto_nego);
+    rtl8125_mdio_write(tp, MII_CTRL1000, giga_ctrl);
+    mdio_direct_write_phy_ocp(tp, 0xA5D4, ctrl_2500);
+
+    rtl8125_disable_giga_lite(tp);
+
+    rtl8125_phy_restart_nway(tp);
+
+exit:
+    IOSimpleLockUnlock(phyLock);
+
+    return auto_nego;
+}
+
+void RTL8125::rtl812xPowerdownPll(struct rtl8125_private *tp)
+{
+    tp->check_keep_link_speed = 0;
+    
+    if (tp->wol_enabled == WOL_ENABLED || tp->DASH) {
+        int auto_nego;
+
+        rtl8125_set_hw_wol(tp, tp->wol_opts);
+
+        rtl8125_enable_cfg9346_write(tp);
+        RTL_W8(tp, Config2, RTL_R8(tp, Config2) | PMSTS_En);
+        rtl8125_disable_cfg9346_write(tp);
+
+        /* Enable the PME and clear the status */
+        //rtl8125_set_pci_pme(tp, 1);
+
+        if (rtl8125_keep_wol_link_speed(tp, tp->wol_enabled)) {
+            tp->check_keep_link_speed = 1;
+        } else {
+            if (tp->D0SpeedUpSpeed != D0_SPEED_UP_SPEED_DISABLE) {
+                rtl8125_enable_d0_speedup(tp);
+                tp->check_keep_link_speed = 1;
+            }
+
+            auto_nego = rtl812xSetWolLinkSpeed(tp);
+
+            if (tp->RequiredPfmPatch)
+                rtl8125_set_pfm_patch(tp, (auto_nego & (ADVERTISE_10HALF | ADVERTISE_10FULL)) ? 1 : 0);
+        }
+        RTL_W32(tp, RxConfig, RTL_R32(tp, RxConfig) | AcceptBroadcast | AcceptMulticast | AcceptMyPhys);
+
+        return;
+    }
+    if (tp->DASH)
+        return;
+
+    rtl8125PhyPowerDown(tp);
+
+    if (!tp->HwIcVerUnknown)
+        RTL_W8(tp, PMCH, RTL_R8(tp, PMCH) & ~BIT_7);
+
+    RTL_W8(tp, 0xF2, RTL_R8(tp, 0xF2) & ~BIT_6);
+}
+
+void RTL8125::rtl812xPhyPowerUp(struct rtl8125_private *tp)
+{
+    if (rtl8125_is_in_phy_disable_mode(tp))
+        return;
+
+    IOSimpleLockLock(phyLock);
+
+    rtl8125_mdio_write(tp, 0x1F, 0x0000);
+    rtl8125_mdio_write(tp, MII_BMCR, BMCR_ANENABLE);
+
+    //wait ups resume (phy state 3)
+    rtl8125_wait_phy_ups_resume(tp, 3);
+    
+    IOSimpleLockUnlock(phyLock);
+}
+
+void RTL8125::rtl8125PhyPowerDown(struct rtl8125_private *tp)
+{
+    IOSimpleLockLock(phyLock);
+
+    rtl8125_mdio_write(tp, 0x1F, 0x0000);
+    rtl8125_mdio_write(tp, MII_BMCR, BMCR_ANENABLE | BMCR_PDOWN);
+    
+    IOSimpleLockUnlock(phyLock);
+}
+
+void RTL8125::rtl812xPowerupPll(struct rtl8125_private *tp)
+{
+    RTL_W8(tp, PMCH, RTL_R8(tp, PMCH) | BIT_7 | BIT_6);
+
+    if (tp->resume_not_chg_speed) return;
+    
+    rtl812xPhyPowerUp(tp);
 }

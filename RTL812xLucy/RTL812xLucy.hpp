@@ -383,9 +383,11 @@ private:
     bool setupRxResources();
     bool setupTxResources();
     bool setupStatResources();
+    bool setupPhyResources();
     void freeRxResources();
     void freeTxResources();
     void freeStatResources();
+    void freePhyResources();
     
     static IOReturn refillAction(OSObject *owner, void *arg1, void *arg2, void *arg3, void *arg4);
 
@@ -407,14 +409,22 @@ private:
     void rtl812xSetMrrs(struct rtl8125_private *tp, UInt8 setting);
     void rtl812xSetOffloadFeatures(bool active);
     void rtl812xRestart();
-    void rtl812xSetPhyMedium(struct rtl8125_private *tp, UInt8 autoneg, UInt32 speed, UInt8 duplex, UInt64 adv);
-    void rtl812xMedium2Adv(struct rtl8125_private *tp, UInt32 index);
+    void rtl812xSetPhyMedium(struct rtl8125_private *tp, UInt32 index);
+    UInt64 rtl812xMedium2Adv(struct rtl8125_private *tp, UInt32 index);
     void rtl812xGetEEEMode(struct rtl8125_private *tp);
     void rtl812xLinkDownPatch(struct rtl8125_private *tp);
     void rtl812xLinkOnPatch(struct rtl8125_private *tp);
     UInt32 rtl812xGetHwCloPtr(struct rtl8125_private *tp);
     void rtl812xDoorbell(struct rtl8125_private *tp, UInt32 txTailPtr);
-    static IOReturn readThermalSensor(OSObject *owner, void *arg1, void *arg2, void *arg3, void *arg4);
+
+    /* PHY related methods */
+    void rtl812xXmiiResetEnable(struct rtl8125_private *tp);
+    void rtl812xHwPhyConfig(struct rtl8125_private *tp);
+    int rtl812xSetWolLinkSpeed(struct rtl8125_private *tp);
+    void rtl812xPowerdownPll(struct rtl8125_private *tp);
+    void rtl812xPhyPowerUp(struct rtl8125_private *tp);
+    void rtl812xPowerupPll(struct rtl8125_private *tp);
+    void rtl8125PhyPowerDown(struct rtl8125_private *tp);
 
     void rtl812xDumpTallyCounter(struct rtl8125_private *tp);
     static void runStatUpdateThread(thread_call_param_t param0);
@@ -503,6 +513,10 @@ private:
     thread_call_t statCall;
     struct RtlStatData *statData;
 
+    /* PHY data */
+    IOSimpleLock *phyLock;
+    UInt32 temperature;
+    
     UInt32 mtu;
     struct pci_dev pciDeviceData;
     struct rtl8125_private linuxData;

@@ -27,7 +27,7 @@ static const char *offName = "disabled";
 #define ADV_ALL (ADVERTISED_10baseT_Half | ADVERTISED_10baseT_Full | ADVERTISED_100baseT_Half | ADVERTISED_100baseT_Full | ADVERTISED_1000baseT_Full)
 
 struct rtlMediumTable mediumArray[MIDX_COUNT] = {
-    { .type = kIOMediumEthernetAuto, .spd = 0, .idx = MIDX_AUTO, .speed = 0, .duplex = DUPLEX_FULL, .fc = rtl8125_fc_none, .eee = kEEETypeNo, .adv = ADV_ALL },
+    { .type = kIOMediumEthernetAuto, .spd = kSpeed1000MBit, .idx = MIDX_AUTO, .speed = SPEED_1000, .duplex = DUPLEX_FULL, .fc = rtl8125_fc_none, .eee = kEEETypeNo, .adv = ADV_ALL },
 
     /* 10Base-T */
     { .type = (kIOMediumEthernet10BaseT | IFM_HDX), .spd = kSpeed10MBit, .idx = MIDX_10HD, .speed = SPEED_10, .duplex = DUPLEX_HALF, .fc = rtl8125_fc_none, .eee = kEEETypeNo, .adv = ADVERTISED_10baseT_Half },
@@ -208,10 +208,16 @@ bool RTL8125::setupMediumDict()
     bool result = false;
 
     if (HW_SUPP_PHY_LINK_SPEED_5000M(tp)) {
+        mediumArray[MIDX_AUTO].spd = kSpeed5000MBit;
+        mediumArray[MIDX_AUTO].speed = SPEED_5000;
         mediumArray[MIDX_AUTO].adv |= (ADVERTISED_2500baseX_Full | RTK_ADVERTISED_5000baseX_Full);
+
         limit = MIDX_10000FD;
     } else if (HW_SUPP_PHY_LINK_SPEED_2500M(tp)) {
+        mediumArray[MIDX_AUTO].spd = kSpeed2500MBit;
+        mediumArray[MIDX_AUTO].speed = SPEED_2500;
         mediumArray[MIDX_AUTO].adv |= ADVERTISED_2500baseX_Full;
+        
         limit = (tp->mcfg < CFG_METHOD_4) ? MIDX_2500FD_EEE : MIDX_5000FD;
     } else {
         limit = MIDX_2500FD;
@@ -252,13 +258,18 @@ error_med:
     goto done;
 }
 
-void RTL8125::rtl812xMedium2Adv(struct rtl8125_private *tp, UInt32 index)
+UInt64 RTL8125::rtl812xMedium2Adv(struct rtl8125_private *tp, UInt32 index)
 {
+    UInt64 adv = mediumArray[index].adv;
+    
+    tp->autoneg = AUTONEG_ENABLE;
     tp->speed = mediumArray[index].speed;
     tp->duplex = mediumArray[index].duplex;
     tp->fcpause = mediumArray[index].fc;
-    tp->advertising = mediumArray[index].adv;
+    tp->advertising = adv;
     tp->eee.eee_enabled = mediumArray[index].eee;
+    
+    return adv;
 }
 
 bool RTL8125::initEventSources(IOService *provider)
@@ -612,7 +623,24 @@ error_prep:
     
 error_mem:
     thread_call_free(statCall);
+    statCall = NULL;
     goto done;
+}
+
+bool RTL8125::setupPhyResources()
+{
+    bool result = false;
+
+    phyLock = IOSimpleLockAlloc();
+    
+    if (!phyLock) {
+        IOLog("Couldn't alloc PHY IOSimpleLock.\n");
+        goto done;
+    }
+    result = true;
+    
+done:
+    return result;
 }
 
 void RTL8125::freeRxResources()
@@ -692,6 +720,14 @@ void RTL8125::freeStatResources()
         statDescDmaCmd->clearMemoryDescriptor();
         statDescDmaCmd->release();
         statDescDmaCmd = NULL;
+    }
+}
+
+void RTL8125::freePhyResources()
+{
+    if (phyLock) {
+        IOSimpleLockFree(phyLock);
+        phyLock = NULL;
     }
 }
 

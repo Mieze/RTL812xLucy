@@ -53,8 +53,6 @@ bool rtl8125_aspm_is_safe(struct rtl8125_private *tp)
     return (rtl8125_mac_ocp_read(tp, 0xc0b2) & 0xf) ? true : false;
 }
 
-static void rtl8125_phy_power_up(struct rtl8125_private *tp);
-
 bool rtl8125_set_phy_mcu_patch_request(struct rtl8125_private *tp);
 bool rtl8125_clear_phy_mcu_patch_request(struct rtl8125_private *tp);
 void rtl8125_ocp_write(struct rtl8125_private *tp, u16 addr, u8 len, u32 value);
@@ -915,8 +913,7 @@ rtl8125_is_phy_disable_mode_enabled(struct rtl8125_private *tp)
         return phy_disable_mode_enabled;
 }
 
-static u8
-rtl8125_is_in_phy_disable_mode(struct rtl8125_private *tp)
+u8 rtl8125_is_in_phy_disable_mode(struct rtl8125_private *tp)
 {
     u8 in_phy_disable_mode = FALSE;
 
@@ -1125,19 +1122,7 @@ unsigned int rtl8125_xmii_link_ok(struct rtl8125_private *tp)
     return (status & LinkStatus) ? 1 : 0;
 }
 
-unsigned int
-rtl8125_xmii_reset_pending(struct rtl8125_private *tp)
-{
-    unsigned int retval;
-    
-    rtl8125_mdio_write(tp, 0x1f, 0x0000);
-    retval = rtl8125_mdio_read(tp, MII_BMCR) & BMCR_RESET;
-    
-    return retval;
-}
-
-static int
-rtl8125_wait_phy_reset_complete(struct rtl8125_private *tp)
+int rtl8125_wait_phy_reset_complete(struct rtl8125_private *tp)
 {
     int i, val;
 
@@ -1150,29 +1135,6 @@ rtl8125_wait_phy_reset_complete(struct rtl8125_private *tp)
         mdelay(1);
     }
     return -1;
-}
-
-void rtl8125_xmii_reset_enable(struct rtl8125_private *tp)
-{
-    int ret;
-
-    if (rtl8125_is_in_phy_disable_mode(tp))
-        return;
-
-    rtl8125_mdio_write(tp, 0x1f, 0x0000);
-    rtl8125_mdio_write(tp, MII_ADVERTISE, rtl8125_mdio_read(tp, MII_ADVERTISE) &
-                       ~(ADVERTISE_10HALF | ADVERTISE_10FULL |
-                         ADVERTISE_100HALF | ADVERTISE_100FULL));
-    rtl8125_mdio_write(tp, MII_CTRL1000, rtl8125_mdio_read(tp, MII_CTRL1000) &
-                       ~(ADVERTISE_1000HALF | ADVERTISE_1000FULL));
-    mdio_direct_write_phy_ocp(tp, 0xA5D4, mdio_direct_read_phy_ocp(tp, 0xA5D4) &
-                                      ~(RTK_ADVERTISE_2500FULL | RTK_ADVERTISE_5000FULL));
-    rtl8125_mdio_write(tp, MII_BMCR, BMCR_RESET | BMCR_ANENABLE);
-
-    ret = rtl8125_wait_phy_reset_complete(tp);
-
-    if (ret)
-        DebugLog("PHY reset failed.\n");
 }
 
 void
@@ -1617,7 +1579,7 @@ out:
     return wol_opts;
 }
 
-static void rtl8125_enable_d0_speedup(struct rtl8125_private *tp)
+void rtl8125_enable_d0_speedup(struct rtl8125_private *tp)
 {
     u16 clearmask;
     u16 setmask;
@@ -1746,16 +1708,7 @@ rtl8125_phy_setup_force_mode(struct rtl8125_private *tp, u32 speed, u8 duplex)
     rtl8125_mdio_write(tp, MII_BMCR, bmcr_true_force);
 }
 
-void rtl8125_powerup_pll(struct rtl8125_private *tp)
-{
-    RTL_W8(tp, PMCH, RTL_R8(tp, PMCH) | BIT_7 | BIT_6);
-
-    if (tp->resume_not_chg_speed) return;
-    
-    rtl8125_phy_power_up(tp);
-}
-
-static bool rtl8125_keep_wol_link_speed(struct rtl8125_private *tp, u8 from_suspend)
+bool rtl8125_keep_wol_link_speed(struct rtl8125_private *tp, u8 from_suspend)
 {
     if (from_suspend && tp->link_ok(tp) && (tp->wol_opts & WAKE_PHY))
         return 1;
@@ -1781,150 +1734,6 @@ void rtl8125_disable_giga_lite(struct rtl8125_private *tp)
             ClearEthPhyOcpBit(tp, 0xA5EA, BIT_0);
             break;
     }
-}
-
-static int rtl8125_set_wol_link_speed(struct rtl8125_private *tp)
-{
-    int auto_nego = 0;
-    int giga_ctrl;
-    int ctrl_2500;
-    u64 adv;
-    u16 anlpar;
-    u16 gbsr;
-    u16 status_2500;
-    u16 aner;
-
-    if (tp->autoneg != AUTONEG_ENABLE)
-            goto exit;
-
-    rtl8125_mdio_write(tp, 0x1F, 0x0000);
-
-    auto_nego = rtl8125_mdio_read(tp, MII_ADVERTISE);
-    auto_nego &= ~(ADVERTISE_10HALF | ADVERTISE_10FULL
-                   | ADVERTISE_100HALF | ADVERTISE_100FULL);
-
-    giga_ctrl = rtl8125_mdio_read(tp, MII_CTRL1000);
-    giga_ctrl &= ~(ADVERTISE_1000HALF | ADVERTISE_1000FULL);
-
-    ctrl_2500 = mdio_direct_read_phy_ocp(tp, 0xA5D4);
-    ctrl_2500 &= ~(RTK_ADVERTISE_2500FULL | RTK_ADVERTISE_5000FULL);
-
-    aner = tp->phy_reg_aner;
-    anlpar = tp->phy_reg_anlpar;
-    gbsr = tp->phy_reg_gbsr;
-    status_2500 = tp->phy_reg_status_2500;
-    
-    if (tp->link_ok(tp)) {
-        aner = rtl8125_mdio_read(tp, MII_EXPANSION);
-        anlpar = rtl8125_mdio_read(tp, MII_LPA);
-        gbsr = rtl8125_mdio_read(tp, MII_STAT1000);
-        status_2500 = mdio_direct_read_phy_ocp(tp, 0xA5D6);
-    }
-
-    adv = tp->advertising;
-    
-    if ((aner | anlpar | gbsr | status_2500) == 0) {
-        int auto_nego_tmp = 0;
-        
-        if (adv & ADVERTISED_10baseT_Half)
-            auto_nego_tmp |= ADVERTISE_10HALF;
-        if (adv & ADVERTISED_10baseT_Full)
-            auto_nego_tmp |= ADVERTISE_10FULL;
-        if (adv & ADVERTISED_100baseT_Half)
-            auto_nego_tmp |= ADVERTISE_100HALF;
-        if (adv & ADVERTISED_100baseT_Full)
-            auto_nego_tmp |= ADVERTISE_100FULL;
-
-        if (auto_nego_tmp == 0)
-            goto exit;
-
-        auto_nego |= auto_nego_tmp;
-        goto skip_check_lpa;
-    }
-    if (!(aner & EXPANSION_NWAY))
-        goto exit;
-
-    if ((adv & ADVERTISED_10baseT_Half) && (anlpar & LPA_10HALF))
-        auto_nego |= ADVERTISE_10HALF;
-    else if ((adv & ADVERTISED_10baseT_Full) && (anlpar & LPA_10FULL))
-        auto_nego |= ADVERTISE_10FULL;
-    else if ((adv & ADVERTISED_100baseT_Half) && (anlpar & LPA_100HALF))
-        auto_nego |= ADVERTISE_100HALF;
-    else if ((adv & ADVERTISED_100baseT_Full) && (anlpar & LPA_100FULL))
-        auto_nego |= ADVERTISE_100FULL;
-    else if (adv & ADVERTISED_1000baseT_Half && (gbsr & LPA_1000HALF))
-        giga_ctrl |= ADVERTISE_1000HALF;
-    else if (adv & ADVERTISED_1000baseT_Full && (gbsr & LPA_1000FULL))
-        giga_ctrl |= ADVERTISE_1000FULL;
-    else if (adv & ADVERTISED_2500baseX_Full && (status_2500 & RTK_LPA_ADVERTISE_2500FULL))
-        ctrl_2500 |= RTK_ADVERTISE_2500FULL;
-    else if (adv & RTK_ADVERTISED_5000baseX_Full && (status_2500 & RTK_LPA_ADVERTISE_5000FULL))
-        ctrl_2500 |= RTK_ADVERTISE_5000FULL;
-    else
-        goto exit;
-
-skip_check_lpa:
-    if (tp->DASH)
-            auto_nego |= (ADVERTISE_100FULL | ADVERTISE_100HALF | ADVERTISE_10HALF | ADVERTISE_10FULL);
-
-#ifdef CONFIG_DOWN_SPEED_100
-    auto_nego |= (ADVERTISE_100FULL | ADVERTISE_100HALF | ADVERTISE_10HALF | ADVERTISE_10FULL);
-#endif
-
-    rtl8125_mdio_write(tp, MII_ADVERTISE, auto_nego);
-    rtl8125_mdio_write(tp, MII_CTRL1000, giga_ctrl);
-    mdio_direct_write_phy_ocp(tp, 0xA5D4, ctrl_2500);
-
-    rtl8125_disable_giga_lite(tp);
-
-    rtl8125_phy_restart_nway(tp);
-
-exit:
-    return auto_nego;
-}
-
-void rtl8125_powerdown_pll(struct rtl8125_private *tp)
-{
-    tp->check_keep_link_speed = 0;
-    
-    if (tp->wol_enabled == WOL_ENABLED || tp->DASH) {
-        int auto_nego;
-
-        rtl8125_set_hw_wol(tp, tp->wol_opts);
-
-        rtl8125_enable_cfg9346_write(tp);
-        RTL_W8(tp, Config2, RTL_R8(tp, Config2) | PMSTS_En);
-        rtl8125_disable_cfg9346_write(tp);
-
-        /* Enable the PME and clear the status */
-        //rtl8125_set_pci_pme(tp, 1);
-
-        if (rtl8125_keep_wol_link_speed(tp, tp->wol_enabled)) {
-            tp->check_keep_link_speed = 1;
-        } else {
-            if (tp->D0SpeedUpSpeed != D0_SPEED_UP_SPEED_DISABLE) {
-                rtl8125_enable_d0_speedup(tp);
-                tp->check_keep_link_speed = 1;
-            }
-
-            auto_nego = rtl8125_set_wol_link_speed(tp);
-
-            if (tp->RequiredPfmPatch)
-                rtl8125_set_pfm_patch(tp, (auto_nego & (ADVERTISE_10HALF | ADVERTISE_10FULL)) ? 1 : 0);
-        }
-        RTL_W32(tp, RxConfig, RTL_R32(tp, RxConfig) | AcceptBroadcast | AcceptMulticast | AcceptMyPhys);
-
-        return;
-    }
-    if (tp->DASH)
-        return;
-
-    rtl8125_phy_power_down(tp);
-
-    if (!tp->HwIcVerUnknown)
-            RTL_W8(tp, PMCH, RTL_R8(tp, PMCH) & ~BIT_7);
-
-    RTL_W8(tp, 0xF2, RTL_R8(tp, 0xF2) & ~BIT_6);
 }
 
 void rtl8125_set_d0_speedup_speed(struct rtl8125_private *tp)
@@ -10526,7 +10335,7 @@ static void rtl8125_tgphy_irq_mask_and_ack(struct rtl8125_private *tp)
     }
 }
 
-static void rtl8125_hw_phy_config_8125a_1(struct rtl8125_private *tp)
+void rtl8125_hw_phy_config_8125a_1(struct rtl8125_private *tp)
 {
     ClearAndSetEthPhyOcpBit(tp,
                             0xAD40,
@@ -10657,7 +10466,7 @@ static void rtl8125_hw_phy_config_8125a_1(struct rtl8125_private *tp)
     }
 }
 
-static void rtl8125_hw_phy_config_8125a_2(struct rtl8125_private *tp)
+void rtl8125_hw_phy_config_8125a_2(struct rtl8125_private *tp)
 {
     SetEthPhyOcpBit(tp, 0xAD4E, BIT_4);
     ClearAndSetEthPhyOcpBit(tp,
@@ -11015,7 +10824,7 @@ static void rtl8125_hw_phy_config_8125a_2(struct rtl8125_private *tp)
     }
 }
 
-static void rtl8125_hw_phy_config_8125b_1(struct rtl8125_private *tp)
+void rtl8125_hw_phy_config_8125b_1(struct rtl8125_private *tp)
 {
     SetEthPhyOcpBit(tp, 0xA442, BIT_11);
     
@@ -11300,7 +11109,7 @@ static void rtl8125_hw_phy_config_8125b_1(struct rtl8125_private *tp)
     }
 }
 
-static void rtl8125_hw_phy_config_8125b_2(struct rtl8125_private *tp)
+void rtl8125_hw_phy_config_8125b_2(struct rtl8125_private *tp)
 {
     SetEthPhyOcpBit(tp, 0xA442, BIT_11);
     
@@ -11398,7 +11207,7 @@ static void rtl8125_hw_phy_config_8125b_2(struct rtl8125_private *tp)
     }
 }
 
-static void rtl8125_hw_phy_config_8125bp_1(struct rtl8125_private *tp)
+void rtl8125_hw_phy_config_8125bp_1(struct rtl8125_private *tp)
 {
     rtl8125_set_eth_phy_ocp_bit(tp, 0xA442, BIT_11);
 
@@ -11432,7 +11241,7 @@ static void rtl8125_hw_phy_config_8125bp_1(struct rtl8125_private *tp)
         rtl8125_enable_phy_aldps(tp);
 }
 
-static void rtl8125_hw_phy_config_8125bp_2(struct rtl8125_private *tp)
+void rtl8125_hw_phy_config_8125bp_2(struct rtl8125_private *tp)
 {
     rtl8125_set_eth_phy_ocp_bit(tp, 0xA442, BIT_11);
 
@@ -11461,7 +11270,7 @@ static void rtl8125_hw_phy_config_8125bp_2(struct rtl8125_private *tp)
         rtl8125_enable_phy_aldps(tp);
 }
 
-static void rtl8125_hw_phy_config_8125cp_1(struct rtl8125_private *tp)
+void rtl8125_hw_phy_config_8125cp_1(struct rtl8125_private *tp)
 {
     rtl8125_tgphy_irq_mask_and_ack(tp);
 
@@ -11486,7 +11295,7 @@ static void rtl8125_hw_phy_config_8125cp_1(struct rtl8125_private *tp)
         rtl8125_enable_phy_aldps(tp);
 }
 
-static void rtl8125_hw_phy_config_8125d_1(struct rtl8125_private *tp)
+void rtl8125_hw_phy_config_8125d_1(struct rtl8125_private *tp)
 {
     rtl8125_set_eth_phy_ocp_bit(tp, 0xA442, BIT_11);
 
@@ -11802,7 +11611,7 @@ static void rtl8125_hw_phy_config_8125d_1(struct rtl8125_private *tp)
         rtl8125_enable_phy_aldps(tp);
 }
 
-static void rtl8125_hw_phy_config_8125d_2(struct rtl8125_private *tp)
+void rtl8125_hw_phy_config_8125d_2(struct rtl8125_private *tp)
 {
     rtl8125_set_eth_phy_ocp_bit(tp, 0xA442, BIT_11);
 
@@ -11898,7 +11707,7 @@ static void rtl8125_hw_phy_config_8125d_2(struct rtl8125_private *tp)
         rtl8125_enable_phy_aldps(tp);
 }
 
-static void rtl8126_hw_phy_config_8126a_1(struct rtl8125_private *tp)
+void rtl8126_hw_phy_config_8126a_1(struct rtl8125_private *tp)
 {
     rtl8125_set_eth_phy_ocp_bit(tp, 0xA442, BIT_11);
 
@@ -11906,7 +11715,7 @@ static void rtl8126_hw_phy_config_8126a_1(struct rtl8125_private *tp)
         rtl8125_enable_phy_aldps(tp);
 }
 
-static void rtl8126_hw_phy_config_8126a_2(struct rtl8125_private *tp)
+void rtl8126_hw_phy_config_8126a_2(struct rtl8125_private *tp)
 {
     rtl8125_set_eth_phy_ocp_bit(tp, 0xA442, BIT_11);
 
@@ -12374,8 +12183,7 @@ static void rtl8126_hw_phy_config_8126a_2(struct rtl8125_private *tp)
         rtl8125_enable_phy_aldps(tp);
 }
 
-static void
-rtl8126_hw_phy_config_8126a_3(struct rtl8125_private *tp)
+void rtl8126_hw_phy_config_8126a_3(struct rtl8125_private *tp)
 {
         rtl8125_set_eth_phy_ocp_bit(tp, 0xA442, BIT_11);
 
@@ -12660,97 +12468,6 @@ void rtl8125_set_hw_phy_before_init_phy_mcu(struct rtl8125_private *tp)
     }
 }
 
-void rtl8125_hw_phy_config(struct rtl8125_private *tp)
-{
-    if (tp->resume_not_chg_speed)
-        return;
-
-    tp->phy_reset_enable(tp);
-
-#ifndef ENABLE_USE_FIRMWARE_FILE
-    if (!tp->rtl_fw) {
-        if (tp->mcfg < CFG_METHOD_31)
-            rtl8125_set_hw_phy_before_init_phy_mcu(tp);
-        
-        rtl8125_init_hw_phy_mcu(tp);
-    }
-#endif
-
-    switch (tp->mcfg) {
-        case CFG_METHOD_2:
-            rtl8125_hw_phy_config_8125a_1(tp);
-            break;
-            
-        case CFG_METHOD_3:
-        case CFG_METHOD_6:
-            rtl8125_hw_phy_config_8125a_2(tp);
-            break;
-            
-        case CFG_METHOD_4:
-            rtl8125_hw_phy_config_8125b_1(tp);
-            break;
-            
-        case CFG_METHOD_5:
-        case CFG_METHOD_7:
-            rtl8125_hw_phy_config_8125b_2(tp);
-            break;
-            
-        case CFG_METHOD_8:
-            rtl8125_hw_phy_config_8125bp_1(tp);
-            break;
-            
-        case CFG_METHOD_9:
-            rtl8125_hw_phy_config_8125bp_2(tp);
-            break;
-            
-        case CFG_METHOD_10:
-            rtl8125_hw_phy_config_8125d_1(tp);
-            break;
-            
-        case CFG_METHOD_11:
-        case CFG_METHOD_13:
-            rtl8125_hw_phy_config_8125d_2(tp);
-            break;
-            
-        case CFG_METHOD_12:
-            rtl8125_hw_phy_config_8125cp_1(tp);
-            break;
-            
-        case CFG_METHOD_31:
-            rtl8126_hw_phy_config_8126a_1(tp);
-            break;
-            
-        case CFG_METHOD_32:
-            rtl8126_hw_phy_config_8126a_2(tp);
-            break;
-            
-        case CFG_METHOD_33:
-            rtl8126_hw_phy_config_8126a_3(tp);
-            break;
-    }
-
-    //legacy force mode(Chap 22)
-    rtl8125_clear_eth_phy_ocp_bit(tp, 0xA5B4, BIT_15);
-
-    /*ocp phy power saving*/
-    /*
-    if (tp->aspm) {
-    if (tp->mcfg == CFG_METHOD_2 || tp->mcfg == CFG_METHOD_3 ||
-        tp->mcfg == CFG_METHOD_6)
-            rtl8125_enable_ocp_phy_power_saving(tp);
-    }
-    */
-
-    rtl8125_mdio_write(tp, 0x1F, 0x0000);
-
-    if (HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp)) {
-        if (tp->eee.eee_enabled)
-            rtl8125_enable_eee(tp);
-        else
-            rtl8125_disable_eee(tp);
-    }
-}
-
 void rtl8125_get_bios_setting(struct rtl8125_private *tp)
 {
     tp->bios_setting = RTL_R32(tp, TimeInt2);
@@ -12789,24 +12506,6 @@ void rtl8125_rar_set(struct rtl8125_private *tp, const u8 *addr)
     RTL_W32(tp, MAC4, rar_high);
     
     rtl8125_disable_cfg9346_write(tp);
-}
-
-static void rtl8125_phy_power_up(struct rtl8125_private *tp)
-{
-    if (rtl8125_is_in_phy_disable_mode(tp))
-            return;
-
-    rtl8125_mdio_write(tp, 0x1F, 0x0000);
-    rtl8125_mdio_write(tp, MII_BMCR, BMCR_ANENABLE);
-
-    //wait ups resume (phy state 3)
-    rtl8125_wait_phy_ups_resume(tp, 3);
-}
-
-void rtl8125_phy_power_down(struct rtl8125_private *tp)
-{
-    rtl8125_mdio_write(tp, 0x1F, 0x0000);
-    rtl8125_mdio_write(tp, MII_BMCR, BMCR_ANENABLE | BMCR_PDOWN);
 }
 
 u8 rtl8125_get_l1off_cap_bits(struct rtl8125_private *tp)
