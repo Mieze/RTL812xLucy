@@ -50,7 +50,7 @@
 			<key>IOClass</key>
 			<string>RTL8125</string>
 			<key>IOPCIPrimaryMatch</key>
-			<string>0x812510ec 0x81251186 0x300010ec 0x812610ec 0x500010ec</string>
+			<string>0x812510ec 0x81251186 0x300010ec 0x812610ec 0x500010ec 0x816210ec</string>
 			<key>IOPCITunnelCompatible</key>
 			<false/>
 			<key>IOProbeScore</key>
